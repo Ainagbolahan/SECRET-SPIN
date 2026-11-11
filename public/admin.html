@@ -31,11 +31,11 @@
     .card h2 { font-size: 1.1rem; margin-bottom: 12px; color: var(--text); }
     
     .form-group { display: flex; gap: 10px; margin-bottom: 12px; }
-    input[type="password"], input[type="text"], textarea {
+    input[type="password"], textarea {
       flex: 1; background: #0f172a; border: 1px solid var(--panel-border); color: var(--text);
       padding: 10px 14px; border-radius: var(--radius); font-size: 0.95rem; outline: none;
     }
-    textarea { resize: vertical; min-height: 80px; }
+    textarea { resize: vertical; min-height: 90px; }
     input:focus, textarea:focus { border-color: var(--primary); }
     
     button {
@@ -49,6 +49,7 @@
     button.btn-secondary { background: #475569; }
     button.btn-secondary:hover { background: #334155; }
     button.btn-warning { background: var(--warning); color: #0f172a; }
+    button.btn-success { background: var(--success); }
 
     .actions-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
 
@@ -57,13 +58,11 @@
     th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
     tr:hover { background: rgba(255,255,255,0.02); }
 
-    .badge {
-      display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;
-    }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
     .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
     .badge-pending { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 
-    .link-box { display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 0.85rem; color: #a5b4fc; }
+    .link-box { display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 0.8rem; color: #a5b4fc; }
 
     #toast {
       position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius);
@@ -81,21 +80,22 @@
       </div>
     </header>
 
-    <!-- Add Participants -->
+    <!-- Add Participants by Email -->
     <div class="card">
-      <h2>Add Participants</h2>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">Enter names separated by commas or line breaks (e.g. John, Mary, Alex)</p>
+      <h2>Add Participants by Email</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">Enter participant emails separated by commas or line breaks (e.g. alice@example.com, bob@example.com)</p>
       <div class="form-group">
-        <textarea id="namesInput" placeholder="John Doe&#10;Mary Jane&#10;Alex Smith"></textarea>
+        <textarea id="emailsInput" placeholder="alice@domain.com&#10;bob@domain.com&#10;charlie@domain.com"></textarea>
       </div>
-      <button onclick="addPeople()">Add Participants</button>
+      <button onclick="addPeople()">Add Email Addresses</button>
     </div>
 
     <!-- Actions & Controls -->
     <div class="actions-bar">
-      <button onclick="lockAssignments()" class="btn-warning">🔒 Lock Secret Santa Pairings</button>
-      <button onclick="fetchPeople()" class="btn-secondary">🔄 Refresh List</button>
-      <button onclick="resetAll()" class="btn-danger">⚠️ Reset All Spins & Pairings</button>
+      <button id="approvalBtn" onclick="toggleApproval()" class="btn-warning">🔒 Enable Participant Spinning</button>
+      <button onclick="lockAssignments()" class="btn-secondary">🎲 Lock Pairings</button>
+      <button onclick="fetchPeople()" class="btn-secondary">🔄 Refresh</button>
+      <button onclick="resetAll()" class="btn-danger">⚠️ Reset All</button>
     </div>
 
     <!-- People List -->
@@ -104,10 +104,10 @@
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Personal URL Link</th>
+            <th>Participant Email</th>
+            <th>Unique Access Link (Send to Email)</th>
             <th>Status</th>
-            <th>Result</th>
+            <th>Assigned Recipient</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -121,7 +121,6 @@
   <div id="toast"></div>
 
   <script>
-    // Save/Load Admin Password from LocalStorage
     document.getElementById('adminPass').value = localStorage.getItem('admin_password') || '';
 
     function savePassword() {
@@ -155,8 +154,19 @@
       }
     }
 
-    function renderTable(people) {
+    function renderTable(data) {
+      const { people, isApproved } = data;
       document.getElementById('peopleCount').innerText = people.length;
+      
+      const approvalBtn = document.getElementById('approvalBtn');
+      if (isApproved) {
+        approvalBtn.innerText = '🔓 Spinning is APPROVED (Click to Lock)';
+        approvalBtn.className = 'button btn-success';
+      } else {
+        approvalBtn.innerText = '🔒 Spinning is LOCKED (Click to Approve)';
+        approvalBtn.className = 'button btn-warning';
+      }
+
       const tbody = document.getElementById('peopleTable');
       if (people.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No participants added yet.</td></tr>';
@@ -166,15 +176,14 @@
       const origin = window.location.origin;
 
       tbody.innerHTML = people.map(p => {
-        const slug = p.slug || p.id;
-        const link = `${origin}/${slug}`;
+        const link = `${origin}/spin/${p.token}`;
         const isSpun = !!p.result;
         return `
           <tr>
-            <td><strong>${escapeHtml(p.name)}</strong></td>
+            <td><strong>${escapeHtml(p.email)}</strong></td>
             <td>
               <div class="link-box">
-                <span>/${slug}</span>
+                <span>/spin/${p.token.substring(0, 8)}...</span>
                 <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="copyToClipboard('${link}')">Copy Link</button>
               </div>
             </td>
@@ -185,8 +194,8 @@
             </td>
             <td>${p.result ? escapeHtml(p.result) : '<span style="color:var(--text-muted)">Hidden</span>'}</td>
             <td>
-              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetPerson('${slug}')">Reset</button>
-              <button class="btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="deletePerson('${slug}')">Delete</button>
+              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetPerson('${p.token}')">Reset</button>
+              <button class="btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="deletePerson('${p.token}')">Delete</button>
             </td>
           </tr>
         `;
@@ -194,28 +203,42 @@
     }
 
     async function addPeople() {
-      const input = document.getElementById('namesInput').value;
-      const names = input.split(/[\n,]/).map(n => n.trim()).filter(Boolean);
-      if (names.length === 0) return showToast('Please enter at least one name', true);
+      const input = document.getElementById('emailsInput').value;
+      const emails = input.split(/[\n,]/).map(e => e.trim()).filter(Boolean);
+      if (emails.length === 0) return showToast('Please enter at least one email address', true);
 
       try {
         const res = await fetch('/api/admin/people', {
           method: 'POST',
           headers: getHeaders(),
-          body: JSON.stringify({ names })
+          body: JSON.stringify({ emails })
         });
-        if (!res.ok) throw new Error();
-        document.getElementById('namesInput').value = '';
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to add emails');
+        document.getElementById('emailsInput').value = '';
         renderTable(data);
-        showToast(`Added ${names.length} participant(s)`);
+        showToast(`Added ${data.addedCount || emails.length} valid email(s)`);
       } catch (err) {
-        showToast('Failed to add participants', true);
+        showToast(err.message, true);
+      }
+    }
+
+    async function toggleApproval() {
+      try {
+        const res = await fetch('/api/admin/toggle-approval', {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        showToast(data.message);
+        fetchPeople();
+      } catch (err) {
+        showToast('Failed to toggle approval state', true);
       }
     }
 
     async function lockAssignments() {
-      if (!confirm('This will pre-generate Secret Santa pairings for all participants. Continue?')) return;
+      if (!confirm('This will pre-generate pairings for all participants. Continue?')) return;
       try {
         const res = await fetch('/api/admin/lock-assignments', {
           method: 'POST',
@@ -223,51 +246,48 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to lock pairings');
-        showToast(data.message || 'Pairings locked successfully!');
+        showToast(data.message);
       } catch (err) {
         showToast(err.message, true);
       }
     }
 
-    async function resetPerson(slug) {
+    async function resetPerson(token) {
       try {
-        const res = await fetch(`/api/admin/reset/${slug}`, {
+        const res = await fetch(`/api/admin/reset/${token}`, {
           method: 'POST',
           headers: getHeaders()
         });
-        if (!res.ok) throw new Error();
         const data = await res.json();
         renderTable(data);
-        showToast(`Reset spin status for ${slug}`);
+        showToast('Participant status reset');
       } catch (err) {
         showToast('Failed to reset participant', true);
       }
     }
 
-    async function deletePerson(slug) {
-      if (!confirm(`Are you sure you want to delete ${slug}?`)) return;
+    async function deletePerson(token) {
+      if (!confirm('Are you sure you want to delete this participant?')) return;
       try {
-        const res = await fetch(`/api/admin/people/${slug}`, {
+        const res = await fetch(`/api/admin/people/${token}`, {
           method: 'DELETE',
           headers: getHeaders()
         });
-        if (!res.ok) throw new Error();
         const data = await res.json();
         renderTable(data);
-        showToast(`Deleted ${slug}`);
+        showToast('Participant deleted');
       } catch (err) {
         showToast('Failed to delete participant', true);
       }
     }
 
     async function resetAll() {
-      if (!confirm('WARNING: This will clear all spin results and pairings for EVERYONE. Continue?')) return;
+      if (!confirm('WARNING: Resetting will clear all spin results and pairings. Continue?')) return;
       try {
         const res = await fetch('/api/admin/reset-all', {
           method: 'POST',
           headers: getHeaders()
         });
-        if (!res.ok) throw new Error();
         const data = await res.json();
         renderTable(data);
         showToast('All spins and pairings reset');
@@ -278,14 +298,13 @@
 
     function copyToClipboard(text) {
       navigator.clipboard.writeText(text);
-      showToast('Copied link to clipboard!');
+      showToast('Copied email link to clipboard!');
     }
 
     function escapeHtml(str) {
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
-    // Initial load
     fetchPeople();
   </script>
 </body>
