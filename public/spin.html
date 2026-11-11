@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secret Spin - Pick Your Target</title>
+  <title>Secret Spin</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -39,7 +39,7 @@
       align-items: center;
     }
 
-    h1 { font-size: 1.75rem; margin-bottom: 6px; font-weight: 700; }
+    h1 { font-size: 1.75rem; margin-bottom: 6px; font-weight: 700; word-break: break-all; }
     .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 24px; }
 
     .wheel-wrapper {
@@ -81,20 +81,17 @@
       cursor: pointer;
       box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
       transition: all 0.2s ease;
-      letter-spacing: 0.5px;
     }
 
     button.spin-btn:hover:not(:disabled) {
       background: var(--primary-hover);
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
     }
 
     button.spin-btn:disabled {
       background: #475569;
       cursor: not-allowed;
       box-shadow: none;
-      transform: none;
       opacity: 0.7;
     }
 
@@ -106,11 +103,21 @@
       padding: 20px 24px;
       width: 100%;
       display: none;
-      animation: fadeIn 0.5s ease forwards;
     }
 
-    .result-card h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; }
-    .result-card .recipient-name { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+    .result-card h3 { font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+    .result-card .recipient-name { font-size: 1.6rem; font-weight: 800; color: var(--accent); word-break: break-all; }
+
+    .notice-card {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid var(--panel-border);
+      color: #fcd34d;
+      padding: 16px 20px;
+      border-radius: var(--radius);
+      margin-top: 16px;
+      display: none;
+      width: 100%;
+    }
 
     .error-card {
       background: rgba(239, 68, 68, 0.1);
@@ -122,18 +129,13 @@
       display: none;
       width: 100%;
     }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
   </style>
 </head>
 <body>
 
   <div class="container">
     <h1 id="welcomeTitle">Secret Santa Spin</h1>
-    <p class="subtitle" id="subtitleText">Spin the wheel to reveal who you got!</p>
+    <p class="subtitle" id="subtitleText">Spin the wheel to reveal your recipient!</p>
 
     <div class="wheel-wrapper" id="wheelWrapper">
       <div class="pointer"></div>
@@ -141,6 +143,8 @@
     </div>
 
     <button id="spinBtn" class="spin-btn" onclick="spinWheel()">SPIN THE WHEEL</button>
+
+    <div id="noticeCard" class="notice-card">🔒 Spinning has not been approved by the admin host yet. Please wait for the host to start the event.</div>
 
     <div id="resultCard" class="result-card">
       <h3>You are Secret Santa for:</h3>
@@ -157,8 +161,8 @@
       '#0284c7', '#16a34a', '#ea580c', '#9333ea'
     ];
 
-    // Extract slug from URL path (e.g. site.com/john -> "john")
-    const slug = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    // Extract token from URL path (/spin/YOUR_TOKEN)
+    const token = window.location.pathname.split('/').pop();
 
     let meData = null;
     let wheelNames = [];
@@ -169,31 +173,28 @@
     const ctx = canvas.getContext('2d');
 
     async function init() {
-      if (!slug) {
-        showError('No participant specified in URL.');
-        return;
-      }
+      if (!token) return showError('Invalid link token.');
 
       try {
-        const res = await fetch(`/api/me/${slug}`);
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || 'Participant link not found.');
-        }
+        const res = await fetch(`/api/me/${token}`);
+        if (!res.ok) throw new Error('Invalid or expired participant link.');
 
         meData = await res.json();
         wheelNames = meData.wheelNames || [];
 
-        document.getElementById('welcomeTitle').innerText = `Welcome, ${meData.name}!`;
+        document.getElementById('welcomeTitle').innerText = `Welcome, ${meData.email}`;
 
         drawWheel(currentAngle);
 
+        if (!meData.isApproved && !meData.result) {
+          document.getElementById('spinBtn').disabled = true;
+          document.getElementById('noticeCard').style.display = 'block';
+        }
+
         if (meData.result) {
-          // Participant already spun
           showResult(meData.result);
           document.getElementById('spinBtn').innerText = 'ALREADY SPUN';
           document.getElementById('spinBtn').disabled = true;
-          // Align wheel pointer directly to their winner
           alignWheelToResult(meData.result);
         }
       } catch (err) {
@@ -216,7 +217,6 @@
         const startAngle = angle + i * sliceAngle;
         const endAngle = startAngle + sliceAngle;
 
-        // Draw sector
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, startAngle, endAngle);
@@ -227,18 +227,18 @@
         ctx.strokeStyle = '#0f172a';
         ctx.stroke();
 
-        // Draw label text
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(startAngle + sliceAngle / 2);
         ctx.textAlign = 'right';
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 22px system-ui, sans-serif';
-        ctx.fillText(wheelNames[i], radius - 25, 8);
+        ctx.font = 'bold 16px system-ui, sans-serif';
+        // Truncate email prefix if long
+        const label = wheelNames[i].split('@')[0];
+        ctx.fillText(label, radius - 20, 6);
         ctx.restore();
       }
 
-      // Draw center circle hub
       ctx.beginPath();
       ctx.arc(centerX, centerY, 40, 0, 2 * Math.PI);
       ctx.fillStyle = '#0f172a';
@@ -257,18 +257,17 @@
       isSpinning = true;
 
       try {
-        const res = await fetch(`/api/spin/${slug}`, { method: 'POST' });
+        const res = await fetch(`/api/spin/${token}`, { method: 'POST' });
         const data = await res.json();
 
         if (!res.ok) throw new Error(data.error || 'Failed to spin');
 
-        const winnerName = data.result;
-        animateSpinToWinner(winnerName, () => {
-          showResult(winnerName);
+        const winnerEmail = data.result;
+        animateSpinToWinner(winnerEmail, () => {
+          showResult(winnerEmail);
           spinBtn.innerText = 'SPUN!';
           isSpinning = false;
         });
-
       } catch (err) {
         showError(err.message);
         spinBtn.disabled = false;
@@ -277,38 +276,28 @@
       }
     }
 
-    function animateSpinToWinner(winnerName, onComplete) {
-      const targetIndex = wheelNames.indexOf(winnerName);
-      if (targetIndex === -1) {
-        onComplete();
-        return;
-      }
+    function animateSpinToWinner(winnerEmail, onComplete) {
+      const targetIndex = wheelNames.indexOf(winnerEmail);
+      if (targetIndex === -1) return onComplete();
 
       const numSegments = wheelNames.length;
       const sliceAngle = (2 * Math.PI) / numSegments;
-
-      // Pointer is located at 12 o'clock (3*PI/2 rads)
       const targetSliceCenter = targetIndex * sliceAngle + sliceAngle / 2;
       let targetAngle = (3 * Math.PI / 2) - targetSliceCenter;
 
-      // Ensure positive angle and add 5 full rotations for animation effect
       const extraRotations = 5 * 2 * Math.PI;
       const startAngle = currentAngle % (2 * Math.PI);
       const finalAngle = startAngle + extraRotations + ((targetAngle - startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
 
-      const duration = 4500; // ms
+      const duration = 4500;
       const startTime = performance.now();
 
-      function easeOutCubic(t) {
-        return 1 - Math.pow(1 - t, 3);
-      }
+      function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
       function loop(now) {
         const elapsed = now - startTime;
         const progress = Math.min(elapsed / duration, 1);
-        const easedProgress = easeOutCubic(progress);
-
-        currentAngle = startAngle + (finalAngle - startAngle) * easedProgress;
+        currentAngle = startAngle + (finalAngle - startAngle) * easeOutCubic(progress);
         drawWheel(currentAngle);
 
         if (progress < 1) {
@@ -322,8 +311,8 @@
       requestAnimationFrame(loop);
     }
 
-    function alignWheelToResult(winnerName) {
-      const targetIndex = wheelNames.indexOf(winnerName);
+    function alignWheelToResult(winnerEmail) {
+      const targetIndex = wheelNames.indexOf(winnerEmail);
       if (targetIndex === -1) return;
       const numSegments = wheelNames.length;
       const sliceAngle = (2 * Math.PI) / numSegments;
@@ -332,9 +321,10 @@
       drawWheel(currentAngle);
     }
 
-    function showResult(name) {
-      document.getElementById('recipientName').innerText = name;
+    function showResult(email) {
+      document.getElementById('recipientName').innerText = email;
       document.getElementById('resultCard').style.display = 'block';
+      document.getElementById('noticeCard').style.display = 'none';
     }
 
     function showError(msg) {
@@ -343,7 +333,6 @@
       errCard.style.display = 'block';
       document.getElementById('wheelWrapper').style.display = 'none';
       document.getElementById('spinBtn').style.display = 'none';
-      document.getElementById('subtitleText').style.display = 'none';
     }
 
     init();
