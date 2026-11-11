@@ -23,6 +23,12 @@ function load() {
     state = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     if (!Array.isArray(state.people)) state.people = [];
     if (typeof state.isApproved !== 'boolean') state.isApproved = false;
+
+    // Auto-repair legacy data structure
+    state.people.forEach(p => {
+      if (!p.email && p.name) p.email = p.name;
+      if (!p.token) p.token = p.slug || p.id || crypto.randomBytes(16).toString('hex');
+    });
   } catch (err) {
     console.error('Failed to parse data.json, starting clean:', err);
     state = { people: [], isApproved: false };
@@ -36,9 +42,20 @@ function save() {
   fs.renameSync(TEMP_FILE, DATA_FILE);
 }
 
-function isValidEmail(email) {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(String(email).toLowerCase());
+// Parses and cleans emails from text, commas, semicolons, brackets, or newlines
+function parseAndValidateEmails(input) {
+  let raw = [];
+  if (Array.isArray(input)) {
+    raw = input;
+  } else if (typeof input === 'string') {
+    raw = input.split(/[\n,\r;\s]+/);
+  }
+
+  const cleaned = raw
+    .map(e => String(e).replace(/[<>'"]/g, '').trim().toLowerCase())
+    .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+
+  return [...new Set(cleaned)];
 }
 
 function adminOnly(req, res, next) {
@@ -91,24 +108,25 @@ app.get('/api/admin/people', adminOnly, (req, res) => {
 });
 
 app.post('/api/admin/people', adminOnly, (req, res) => {
-  const rawEmails = Array.isArray(req.body.emails) ? req.body.emails : [];
-  const validEmails = rawEmails
-    .map(e => String(e).trim().toLowerCase())
-    .filter(e => isValidEmail(e));
+  const validEmails = parseAndValidateEmails(req.body.emails);
 
   if (validEmails.length === 0) {
-    return res.status(400).json({ error: 'No valid email addresses provided.' });
+    return res.status(400).json({ 
+      error: 'No valid email addresses found. Please enter valid emails (e.g. user@domain.com).' 
+    });
   }
 
   const data = load();
   let addedCount = 0;
+  let skippedCount = 0;
 
   for (const email of validEmails) {
-    if (data.people.some(p => p.email.toLowerCase() === email)) continue;
+    if (data.people.some(p => (p.email || '').toLowerCase() === email)) {
+      skippedCount++;
+      continue;
+    }
     
-    // Secure 32-character token for participant URL
     const token = crypto.randomBytes(16).toString('hex');
-
     data.people.push({
       email: email,
       token: token,
@@ -120,7 +138,13 @@ app.post('/api/admin/people', adminOnly, (req, res) => {
   }
 
   if (addedCount > 0) save();
-  res.json({ people: data.people, isApproved: data.isApproved, addedCount });
+  
+  res.json({ 
+    people: data.people, 
+    isApproved: data.isApproved, 
+    addedCount, 
+    skippedCount 
+  });
 });
 
 app.post('/api/admin/toggle-approval', adminOnly, (req, res) => {
@@ -147,14 +171,14 @@ app.post('/api/admin/lock-assignments', adminOnly, (req, res) => {
 
 app.delete('/api/admin/people/:token', adminOnly, (req, res) => {
   const data = load();
-  data.people = data.people.filter(p => p.token !== req.params.token);
+  data.people = data.people.filter(p => (p.token || p.id || p.slug) !== req.params.token);
   save();
   res.json({ people: data.people, isApproved: data.isApproved });
 });
 
 app.post('/api/admin/reset/:token', adminOnly, (req, res) => {
   const data = load();
-  const person = data.people.find(p => p.token === req.params.token);
+  const person = data.people.find(p => (p.token || p.id || p.slug) === req.params.token);
   if (person) {
     person.result = null;
     person.spunAt = null;
@@ -178,7 +202,7 @@ app.post('/api/admin/reset-all', adminOnly, (req, res) => {
 // ---------- Participant routes ----------
 app.get('/api/me/:token', (req, res) => {
   const data = load();
-  const me = data.people.find(p => p.token === req.params.token);
+  const me = data.people.find(p => (p.token || p.id || p.slug) === req.params.token);
   if (!me) return res.status(404).json({ error: 'Invalid access link' });
 
   res.json({
@@ -196,7 +220,7 @@ app.post('/api/spin/:token', (req, res) => {
     return res.status(403).json({ error: 'Spinning has not been approved by the admin yet.' });
   }
 
-  const me = data.people.find(p => p.token === req.params.token);
+  const me = data.people.find(p => (p.token || p.id || p.slug) === req.params.token);
   if (!me) return res.status(404).json({ error: 'Invalid access link' });
 
   if (me.result) return res.json({ result: me.result, already: true });
@@ -224,10 +248,9 @@ app.post('/api/spin/:token', (req, res) => {
   res.json({ result: pick });
 });
 
-// Serve participant spin page via token link
 app.get('/spin/:token', (req, res) => {
   const data = load();
-  const exists = data.people.some(p => p.token === req.params.token);
+  const exists = data.people.some(p => (p.token || p.id || p.slug) === req.params.token);
   if (exists) {
     return res.sendFile(path.join(__dirname, 'public', 'spin.html'));
   }
