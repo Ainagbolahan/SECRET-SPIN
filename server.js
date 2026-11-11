@@ -16,15 +16,16 @@ let state = null;
 function load() {
   if (state) return state;
   if (!fs.existsSync(DATA_FILE)) {
-    state = { people: [] };
+    state = { people: [], isApproved: false };
     return state;
   }
   try {
     state = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     if (!Array.isArray(state.people)) state.people = [];
+    if (typeof state.isApproved !== 'boolean') state.isApproved = false;
   } catch (err) {
     console.error('Failed to parse data.json, starting clean:', err);
-    state = { people: [] };
+    state = { people: [], isApproved: false };
   }
   return state;
 }
@@ -35,21 +36,9 @@ function save() {
   fs.renameSync(TEMP_FILE, DATA_FILE);
 }
 
-// Helper: Generates unique URL slug from first name (e.g. "John Doe" -> "john", duplicates -> "john-2")
-function generateSlug(fullName, existingPeople) {
-  const firstName = fullName.trim().split(/\s+/)[0];
-  let baseSlug = firstName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (!baseSlug) baseSlug = 'guest';
-
-  let slug = baseSlug;
-  let counter = 2;
-  const existingSlugs = new Set(existingPeople.map(p => p.slug || p.id));
-
-  while (existingSlugs.has(slug)) {
-    slug = `${baseSlug}-${counter}`;
-    counter++;
-  }
-  return slug;
+function isValidEmail(email) {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(String(email).toLowerCase());
 }
 
 function adminOnly(req, res, next) {
@@ -69,8 +58,8 @@ function adminOnly(req, res, next) {
 function generateDerangements(peopleList) {
   if (peopleList.length < 2) return null;
 
-  const slugs = peopleList.map(p => p.slug);
-  let shuffled = [...slugs];
+  const tokens = peopleList.map(p => p.token);
+  let shuffled = [...tokens];
   let isValid = false;
   let attempts = 0;
 
@@ -80,43 +69,49 @@ function generateDerangements(peopleList) {
       const j = crypto.randomInt(i + 1);
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    isValid = shuffled.every((targetSlug, idx) => targetSlug !== slugs[idx]);
+    isValid = shuffled.every((targetToken, idx) => targetToken !== tokens[idx]);
   }
 
   if (!isValid) {
-    shuffled = slugs.map((_, i) => slugs[(i + 1) % slugs.length]);
+    shuffled = tokens.map((_, i) => tokens[(i + 1) % tokens.length]);
   }
 
   const map = new Map();
-  slugs.forEach((srcSlug, i) => {
-    const targetPerson = peopleList.find(p => p.slug === shuffled[i]);
-    map.set(srcSlug, targetPerson.name);
+  tokens.forEach((srcToken, i) => {
+    const targetPerson = peopleList.find(p => p.token === shuffled[i]);
+    map.set(srcToken, targetPerson.email);
   });
   return map;
 }
 
 // ---------- Admin routes ----------
 app.get('/api/admin/people', adminOnly, (req, res) => {
-  res.json(load().people);
+  const data = load();
+  res.json({ people: data.people, isApproved: data.isApproved });
 });
 
 app.post('/api/admin/people', adminOnly, (req, res) => {
-  const rawNames = Array.isArray(req.body.names) ? req.body.names : [];
-  const names = rawNames
-    .map(n => String(n).trim())
-    .filter(n => n.length > 0 && n.length <= 50);
+  const rawEmails = Array.isArray(req.body.emails) ? req.body.emails : [];
+  const validEmails = rawEmails
+    .map(e => String(e).trim().toLowerCase())
+    .filter(e => isValidEmail(e));
+
+  if (validEmails.length === 0) {
+    return res.status(400).json({ error: 'No valid email addresses provided.' });
+  }
 
   const data = load();
   let addedCount = 0;
 
-  for (const name of names) {
-    if (data.people.some(p => p.name.toLowerCase() === name.toLowerCase())) continue;
+  for (const email of validEmails) {
+    if (data.people.some(p => p.email.toLowerCase() === email)) continue;
     
-    const slug = generateSlug(name, data.people);
+    // Secure 32-character token for participant URL
+    const token = crypto.randomBytes(16).toString('hex');
+
     data.people.push({
-      id: slug,            // Keyed by slug
-      slug: slug,          // e.g. "john" or "mary"
-      name: name,
+      email: email,
+      token: token,
       assignedResult: null,
       result: null,
       spunAt: null
@@ -125,7 +120,14 @@ app.post('/api/admin/people', adminOnly, (req, res) => {
   }
 
   if (addedCount > 0) save();
-  res.json(data.people);
+  res.json({ people: data.people, isApproved: data.isApproved, addedCount });
+});
+
+app.post('/api/admin/toggle-approval', adminOnly, (req, res) => {
+  const data = load();
+  data.isApproved = req.body.approved !== undefined ? Boolean(req.body.approved) : !data.isApproved;
+  save();
+  res.json({ message: `Spinning is now ${data.isApproved ? 'APPROVED' : 'LOCKED'}`, isApproved: data.isApproved });
 });
 
 app.post('/api/admin/lock-assignments', adminOnly, (req, res) => {
@@ -136,29 +138,29 @@ app.post('/api/admin/lock-assignments', adminOnly, (req, res) => {
 
   const pairings = generateDerangements(data.people);
   data.people.forEach(p => {
-    p.assignedResult = pairings.get(p.slug);
+    p.assignedResult = pairings.get(p.token);
   });
 
   save();
   res.json({ message: 'Pairings locked successfully', count: data.people.length });
 });
 
-app.delete('/api/admin/people/:slug', adminOnly, (req, res) => {
+app.delete('/api/admin/people/:token', adminOnly, (req, res) => {
   const data = load();
-  data.people = data.people.filter(p => (p.slug || p.id) !== req.params.slug);
+  data.people = data.people.filter(p => p.token !== req.params.token);
   save();
-  res.json(data.people);
+  res.json({ people: data.people, isApproved: data.isApproved });
 });
 
-app.post('/api/admin/reset/:slug', adminOnly, (req, res) => {
+app.post('/api/admin/reset/:token', adminOnly, (req, res) => {
   const data = load();
-  const person = data.people.find(p => (p.slug || p.id) === req.params.slug);
+  const person = data.people.find(p => p.token === req.params.token);
   if (person) {
     person.result = null;
     person.spunAt = null;
   }
   save();
-  res.json(data.people);
+  res.json({ people: data.people, isApproved: data.isApproved });
 });
 
 app.post('/api/admin/reset-all', adminOnly, (req, res) => {
@@ -168,27 +170,34 @@ app.post('/api/admin/reset-all', adminOnly, (req, res) => {
     p.spunAt = null;
     p.assignedResult = null;
   });
+  data.isApproved = false;
   save();
-  res.json(data.people);
+  res.json({ people: data.people, isApproved: data.isApproved });
 });
 
 // ---------- Participant routes ----------
-app.get('/api/me/:slug', (req, res) => {
+app.get('/api/me/:token', (req, res) => {
   const data = load();
-  const me = data.people.find(p => (p.slug || p.id) === req.params.slug.toLowerCase());
-  if (!me) return res.status(404).json({ error: 'Invalid link' });
+  const me = data.people.find(p => p.token === req.params.token);
+  if (!me) return res.status(404).json({ error: 'Invalid access link' });
 
   res.json({
-    name: me.name,
+    email: me.email,
     result: me.result,
-    wheelNames: data.people.map(p => p.name)
+    isApproved: data.isApproved,
+    wheelNames: data.people.map(p => p.email)
   });
 });
 
-app.post('/api/spin/:slug', (req, res) => {
+app.post('/api/spin/:token', (req, res) => {
   const data = load();
-  const me = data.people.find(p => (p.slug || p.id) === req.params.slug.toLowerCase());
-  if (!me) return res.status(404).json({ error: 'Invalid link' });
+  
+  if (!data.isApproved) {
+    return res.status(403).json({ error: 'Spinning has not been approved by the admin yet.' });
+  }
+
+  const me = data.people.find(p => p.token === req.params.token);
+  if (!me) return res.status(404).json({ error: 'Invalid access link' });
 
   if (me.result) return res.json({ result: me.result, already: true });
 
@@ -201,8 +210,8 @@ app.post('/api/spin/:slug', (req, res) => {
 
   const taken = new Set(data.people.map(p => p.result).filter(Boolean));
   const available = data.people
-    .map(p => p.name)
-    .filter(n => n !== me.name && !taken.has(n));
+    .map(p => p.email)
+    .filter(e => e !== me.email && !taken.has(e));
 
   if (available.length === 0) {
     return res.status(409).json({ error: 'No valid recipient available' });
@@ -215,14 +224,14 @@ app.post('/api/spin/:slug', (req, res) => {
   res.json({ result: pick });
 });
 
-// Serve the spin page at /:slug (e.g. site.com/john)
-app.get('/:slug', (req, res) => {
+// Serve participant spin page via token link
+app.get('/spin/:token', (req, res) => {
   const data = load();
-  const exists = data.people.some(p => (p.slug || p.id) === req.params.slug.toLowerCase());
+  const exists = data.people.some(p => p.token === req.params.token);
   if (exists) {
     return res.sendFile(path.join(__dirname, 'public', 'spin.html'));
   }
-  res.status(404).send('Participant link not found.');
+  res.status(404).send('Invalid or expired participant link.');
 });
 
 const PORT = process.env.PORT || 3000;
