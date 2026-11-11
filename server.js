@@ -23,12 +23,6 @@ function load() {
     state = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     if (!Array.isArray(state.people)) state.people = [];
     if (typeof state.isApproved !== 'boolean') state.isApproved = false;
-
-    // Auto-repair legacy data structure
-    state.people.forEach(p => {
-      if (!p.email && p.name) p.email = p.name;
-      if (!p.token) p.token = p.slug || p.id || crypto.randomBytes(16).toString('hex');
-    });
   } catch (err) {
     console.error('Failed to parse data.json, starting clean:', err);
     state = { people: [], isApproved: false };
@@ -42,7 +36,6 @@ function save() {
   fs.renameSync(TEMP_FILE, DATA_FILE);
 }
 
-// Parses and cleans emails from text, commas, semicolons, brackets, or newlines
 function parseAndValidateEmails(input) {
   let raw = [];
   if (Array.isArray(input)) {
@@ -75,8 +68,8 @@ function adminOnly(req, res, next) {
 function generateDerangements(peopleList) {
   if (peopleList.length < 2) return null;
 
-  const tokens = peopleList.map(p => p.token);
-  let shuffled = [...tokens];
+  const emails = peopleList.map(p => p.email);
+  let shuffled = [...emails];
   let isValid = false;
   let attempts = 0;
 
@@ -86,22 +79,95 @@ function generateDerangements(peopleList) {
       const j = crypto.randomInt(i + 1);
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    isValid = shuffled.every((targetToken, idx) => targetToken !== tokens[idx]);
+    isValid = shuffled.every((targetEmail, idx) => targetEmail !== emails[idx]);
   }
 
   if (!isValid) {
-    shuffled = tokens.map((_, i) => tokens[(i + 1) % tokens.length]);
+    shuffled = emails.map((_, i) => emails[(i + 1) % emails.length]);
   }
 
   const map = new Map();
-  tokens.forEach((srcToken, i) => {
-    const targetPerson = peopleList.find(p => p.token === shuffled[i]);
-    map.set(srcToken, targetPerson.email);
+  emails.forEach((srcEmail, i) => {
+    map.set(srcEmail, shuffled[i]);
   });
   return map;
 }
 
-// ---------- Admin routes ----------
+// ---------- Public Participant Routes ----------
+
+// Serve the main spin page at root URL /
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'spin.html'));
+});
+
+// Verify if user's entered email is tied to the admin roster
+app.post('/api/check-email', (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Please enter a valid email address.' });
+
+  const data = load();
+  const person = data.people.find(p => p.email.toLowerCase() === email);
+
+  if (!person) {
+    return res.status(404).json({ 
+      error: 'Email not found on the admin roster. Please contact your event host.' 
+    });
+  }
+
+  res.json({
+    email: person.email,
+    alreadySpun: !!person.result,
+    result: person.result,
+    isApproved: data.isApproved,
+    wheelNames: data.people.map(p => p.email)
+  });
+});
+
+// Trigger spin (enforces 1 spin per tied email & checks admin approval)
+app.post('/api/spin', (req, res) => {
+  const data = load();
+  const email = String(req.body.email || '').trim().toLowerCase();
+
+  if (!data.isApproved) {
+    return res.status(403).json({ error: 'Spinning is locked. Please wait for the admin to enable spins.' });
+  }
+
+  const person = data.people.find(p => p.email.toLowerCase() === email);
+  if (!person) {
+    return res.status(404).json({ error: 'Email not tied to admin roster.' });
+  }
+
+  // Prevent duplicate spinning
+  if (person.result) {
+    return res.json({ result: person.result, already: true });
+  }
+
+  // Mode 1: Pre-computed assignment (anti-deadlock)
+  if (person.assignedResult) {
+    person.result = person.assignedResult;
+    person.spunAt = new Date().toISOString();
+    save();
+    return res.json({ result: person.result });
+  }
+
+  // Mode 2: Dynamic fallback pick
+  const taken = new Set(data.people.map(p => p.result).filter(Boolean));
+  const available = data.people
+    .map(p => p.email)
+    .filter(e => e !== person.email && !taken.has(e));
+
+  if (available.length === 0) {
+    return res.status(409).json({ error: 'No valid recipient available to pick.' });
+  }
+
+  const pick = available[crypto.randomInt(available.length)];
+  person.result = pick;
+  person.spunAt = new Date().toISOString();
+  save();
+  res.json({ result: pick });
+});
+
+// ---------- Admin Routes ----------
 app.get('/api/admin/people', adminOnly, (req, res) => {
   const data = load();
   res.json({ people: data.people, isApproved: data.isApproved });
@@ -111,9 +177,7 @@ app.post('/api/admin/people', adminOnly, (req, res) => {
   const validEmails = parseAndValidateEmails(req.body.emails);
 
   if (validEmails.length === 0) {
-    return res.status(400).json({ 
-      error: 'No valid email addresses found. Please enter valid emails (e.g. user@domain.com).' 
-    });
+    return res.status(400).json({ error: 'No valid email addresses provided.' });
   }
 
   const data = load();
@@ -121,15 +185,13 @@ app.post('/api/admin/people', adminOnly, (req, res) => {
   let skippedCount = 0;
 
   for (const email of validEmails) {
-    if (data.people.some(p => (p.email || '').toLowerCase() === email)) {
+    if (data.people.some(p => p.email.toLowerCase() === email)) {
       skippedCount++;
       continue;
     }
     
-    const token = crypto.randomBytes(16).toString('hex');
     data.people.push({
       email: email,
-      token: token,
       assignedResult: null,
       result: null,
       spunAt: null
@@ -138,13 +200,7 @@ app.post('/api/admin/people', adminOnly, (req, res) => {
   }
 
   if (addedCount > 0) save();
-  
-  res.json({ 
-    people: data.people, 
-    isApproved: data.isApproved, 
-    addedCount, 
-    skippedCount 
-  });
+  res.json({ people: data.people, isApproved: data.isApproved, addedCount, skippedCount });
 });
 
 app.post('/api/admin/toggle-approval', adminOnly, (req, res) => {
@@ -162,23 +218,25 @@ app.post('/api/admin/lock-assignments', adminOnly, (req, res) => {
 
   const pairings = generateDerangements(data.people);
   data.people.forEach(p => {
-    p.assignedResult = pairings.get(p.token);
+    p.assignedResult = pairings.get(p.email);
   });
 
   save();
-  res.json({ message: 'Pairings locked successfully', count: data.people.length });
+  res.json({ message: 'Pairings generated and locked successfully', count: data.people.length });
 });
 
-app.delete('/api/admin/people/:token', adminOnly, (req, res) => {
+app.delete('/api/admin/people/:email', adminOnly, (req, res) => {
   const data = load();
-  data.people = data.people.filter(p => (p.token || p.id || p.slug) !== req.params.token);
+  const targetEmail = req.params.email.toLowerCase();
+  data.people = data.people.filter(p => p.email.toLowerCase() !== targetEmail);
   save();
   res.json({ people: data.people, isApproved: data.isApproved });
 });
 
-app.post('/api/admin/reset/:token', adminOnly, (req, res) => {
+app.post('/api/admin/reset/:email', adminOnly, (req, res) => {
   const data = load();
-  const person = data.people.find(p => (p.token || p.id || p.slug) === req.params.token);
+  const targetEmail = req.params.email.toLowerCase();
+  const person = data.people.find(p => p.email.toLowerCase() === targetEmail);
   if (person) {
     person.result = null;
     person.spunAt = null;
@@ -197,64 +255,6 @@ app.post('/api/admin/reset-all', adminOnly, (req, res) => {
   data.isApproved = false;
   save();
   res.json({ people: data.people, isApproved: data.isApproved });
-});
-
-// ---------- Participant routes ----------
-app.get('/api/me/:token', (req, res) => {
-  const data = load();
-  const me = data.people.find(p => (p.token || p.id || p.slug) === req.params.token);
-  if (!me) return res.status(404).json({ error: 'Invalid access link' });
-
-  res.json({
-    email: me.email,
-    result: me.result,
-    isApproved: data.isApproved,
-    wheelNames: data.people.map(p => p.email)
-  });
-});
-
-app.post('/api/spin/:token', (req, res) => {
-  const data = load();
-  
-  if (!data.isApproved) {
-    return res.status(403).json({ error: 'Spinning has not been approved by the admin yet.' });
-  }
-
-  const me = data.people.find(p => (p.token || p.id || p.slug) === req.params.token);
-  if (!me) return res.status(404).json({ error: 'Invalid access link' });
-
-  if (me.result) return res.json({ result: me.result, already: true });
-
-  if (me.assignedResult) {
-    me.result = me.assignedResult;
-    me.spunAt = new Date().toISOString();
-    save();
-    return res.json({ result: me.result });
-  }
-
-  const taken = new Set(data.people.map(p => p.result).filter(Boolean));
-  const available = data.people
-    .map(p => p.email)
-    .filter(e => e !== me.email && !taken.has(e));
-
-  if (available.length === 0) {
-    return res.status(409).json({ error: 'No valid recipient available' });
-  }
-
-  const pick = available[crypto.randomInt(available.length)];
-  me.result = pick;
-  me.spunAt = new Date().toISOString();
-  save();
-  res.json({ result: pick });
-});
-
-app.get('/spin/:token', (req, res) => {
-  const data = load();
-  const exists = data.people.some(p => (p.token || p.id || p.slug) === req.params.token);
-  if (exists) {
-    return res.sendFile(path.join(__dirname, 'public', 'spin.html'));
-  }
-  res.status(404).send('Invalid or expired participant link.');
 });
 
 const PORT = process.env.PORT || 3000;
