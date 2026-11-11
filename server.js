@@ -95,12 +95,11 @@ function generateDerangements(peopleList) {
 
 // ---------- Public Participant Routes ----------
 
-// Serve the main spin page at root URL /
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'spin.html'));
 });
 
-// Verify if user's entered email is tied to the admin roster
+// Verify email tied to admin roster (Does NOT return result to enforce one-time reveal)
 app.post('/api/check-email', (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!email) return res.status(400).json({ error: 'Please enter a valid email address.' });
@@ -116,14 +115,13 @@ app.post('/api/check-email', (req, res) => {
 
   res.json({
     email: person.email,
-    alreadySpun: !!person.result,
-    result: person.result,
+    alreadySpun: !!person.result, // Boolean flag only (NO match string returned)
     isApproved: data.isApproved,
     wheelNames: data.people.map(p => p.email)
   });
 });
 
-// Trigger spin (enforces 1 spin per tied email & checks admin approval)
+// Trigger spin (Only time the recipient match is returned to the user)
 app.post('/api/spin', (req, res) => {
   const data = load();
   const email = String(req.body.email || '').trim().toLowerCase();
@@ -137,12 +135,12 @@ app.post('/api/spin', (req, res) => {
     return res.status(404).json({ error: 'Email not tied to admin roster.' });
   }
 
-  // Prevent duplicate spinning
+  // Strictly block repeated spins
   if (person.result) {
-    return res.json({ result: person.result, already: true });
+    return res.status(400).json({ error: 'You have already completed your spin.' });
   }
 
-  // Mode 1: Pre-computed assignment (anti-deadlock)
+  // Pre-computed pairing logic
   if (person.assignedResult) {
     person.result = person.assignedResult;
     person.spunAt = new Date().toISOString();
@@ -150,7 +148,7 @@ app.post('/api/spin', (req, res) => {
     return res.json({ result: person.result });
   }
 
-  // Mode 2: Dynamic fallback pick
+  // Fallback random selection
   const taken = new Set(data.people.map(p => p.result).filter(Boolean));
   const available = data.people
     .map(p => p.email)
