@@ -65,8 +65,9 @@
     .badge-pending { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 
     #toast {
-      position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius);
-      background: var(--primary); color: white; font-weight: 500; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 100;
+      position: fixed; bottom: 20px; right: 20px; padding: 14px 22px; border-radius: var(--radius);
+      background: var(--primary); color: white; font-weight: 600; display: none; box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 100;
+      border: 1px solid rgba(255,255,255,0.2);
     }
   </style>
 </head>
@@ -80,7 +81,7 @@
       </div>
     </header>
 
-    <!-- Populate Allowed Participants Roster -->
+    <!-- Roster Entry -->
     <div class="card">
       <h2>Add Allowed Participant Emails</h2>
       <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">Enter participant emails allowed to spin (separated by commas, spaces, or line breaks)</p>
@@ -99,7 +100,7 @@
       <button onclick="resetAll()" class="btn-danger">⚠️ Reset All</button>
     </div>
 
-    <!-- Participants Roster & Results Table -->
+    <!-- Results Table -->
     <div class="card">
       <h2>Participants & Secret Matches (<span id="peopleCount">0</span>)</h2>
       <table>
@@ -123,6 +124,8 @@
 
   <script>
     let currentPeopleData = [];
+    let previousStateMap = new Map();
+    let isInitialLoad = true;
 
     document.getElementById('adminPass').value = localStorage.getItem('admin_password') || '';
 
@@ -143,7 +146,7 @@
       toast.innerText = msg;
       toast.style.background = isError ? 'var(--danger)' : 'var(--primary)';
       toast.style.display = 'block';
-      setTimeout(() => { toast.style.display = 'none'; }, 3500);
+      setTimeout(() => { toast.style.display = 'none'; }, 4000);
     }
 
     async function fetchPeople() {
@@ -151,10 +154,31 @@
         const res = await fetch('/api/admin/people', { headers: getHeaders() });
         if (res.status === 401) return showToast('Incorrect Admin Password', true);
         const data = await res.json();
+        
+        checkForNewSpins(data.people || []);
         renderTable(data);
       } catch (err) {
-        showToast('Failed to fetch participants', true);
+        // Silent fail on auto-polling errors
       }
+    }
+
+    // Compare state to detect live spin events and notify admin
+    function checkForNewSpins(newPeopleList) {
+      if (!isInitialLoad) {
+        for (const person of newPeopleList) {
+          const emailKey = person.email.toLowerCase();
+          const oldRecord = previousStateMap.get(emailKey);
+          
+          if (oldRecord && !oldRecord.result && person.result) {
+            showToast(`🔔 LIVE UPDATE: ${person.email} just spun and matched with ${person.result}!`);
+          }
+        }
+      }
+
+      // Update state tracking map
+      previousStateMap.clear();
+      newPeopleList.forEach(p => previousStateMap.set(p.email.toLowerCase(), { ...p }));
+      isInitialLoad = false;
     }
 
     function renderTable(data) {
@@ -338,7 +362,9 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
+    // Initial load & automatic 3-second live updates
     fetchPeople();
+    setInterval(fetchPeople, 3000);
   </script>
 </body>
 </html>
