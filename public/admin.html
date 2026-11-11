@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin</title>
+<style>
+  body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:#f6f5f1;color:#222}
+  h1{font-size:1.3rem}
+  textarea,input{width:100%;box-sizing:border-box;padding:8px;font-size:1rem;margin:6px 0}
+  button{padding:8px 14px;border:0;border-radius:8px;background:#1f6feb;color:#fff;cursor:pointer;margin:2px}
+  button.red{background:#c0392b} button.grey{background:#666}
+  .wrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;background:#fff}
+  th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;font-size:.9rem;white-space:nowrap}
+  .box{background:#fff;padding:12px;border-radius:10px;margin-bottom:14px}
+  #err{color:#c0392b}
+</style>
+</head>
+<body>
+<h1>Secret Spin: Admin</h1>
+<div class="box" id="login">
+  <input id="pw" type="password" placeholder="Admin password">
+  <button onclick="login()">Log in</button>
+  <div id="err"></div>
+</div>
+<div id="panel" style="display:none">
+  <div class="box">
+    <b>Add participants</b> (one name per line)
+    <textarea id="names" rows="5"></textarea>
+    <button onclick="addNames()">Add</button>
+    <button class="grey" onclick="copyAll()">Copy all links</button>
+    <button class="grey" onclick="load()">Refresh</button>
+  </div>
+  <div class="box wrap">
+    <div id="count"></div>
+    <table>
+      <thead><tr><th>Name</th><th>Private link</th><th>Picked</th><th>Spun at</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+let pw = sessionStorage.getItem('pw') || '';
+let people = [];
+const H = () => ({ 'Content-Type': 'application/json', 'x-admin-password': pw });
+const link = p => location.origin + '/s/' + p.id;
+
+async function login() {
+  pw = document.getElementById('pw').value;
+  const ok = await load();
+  if (ok) sessionStorage.setItem('pw', pw);
+}
+async function load() {
+  const r = await fetch('/api/admin/people', { headers: H() });
+  if (!r.ok) { document.getElementById('err').textContent = 'Wrong password'; return false; }
+  people = await r.json();
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('panel').style.display = 'block';
+  render(); return true;
+}
+function render() {
+  const rows = document.getElementById('rows');
+  rows.innerHTML = '';
+  const done = people.filter(p => p.result).length;
+  document.getElementById('count').textContent = done + ' of ' + people.length + ' have spun';
+  for (const p of people) {
+    const tr = document.createElement('tr');
+    const cells = [p.name, link(p), p.result || '—', p.spunAt ? new Date(p.spunAt).toLocaleString() : '—'];
+    for (const t of cells) { const td = document.createElement('td'); td.textContent = t; tr.appendChild(td); }
+    const td = document.createElement('td');
+    td.appendChild(mkBtn('Copy link', '', () => navigator.clipboard.writeText(link(p))));
+    td.appendChild(mkBtn('Reset', 'grey', () => act('POST', '/api/admin/reset/' + p.id, 'Reset ' + p.name + '\'s spin?')));
+    td.appendChild(mkBtn('Remove', 'red', () => act('DELETE', '/api/admin/people/' + p.id, 'Remove ' + p.name + '?')));
+    tr.appendChild(td); rows.appendChild(tr);
+  }
+}
+function mkBtn(label, cls, fn) { const b = document.createElement('button'); b.textContent = label; b.className = cls; b.onclick = fn; return b; }
+async function act(method, url, q) {
+  if (!confirm(q)) return;
+  const r = await fetch(url, { method, headers: H() });
+  people = await r.json(); render();
+}
+async function addNames() {
+  const names = document.getElementById('names').value.split('\n');
+  const r = await fetch('/api/admin/people', { method: 'POST', headers: H(), body: JSON.stringify({ names }) });
+  people = await r.json(); document.getElementById('names').value = ''; render();
+}
+function copyAll() {
+  navigator.clipboard.writeText(people.map(p => p.name + ': ' + link(p)).join('\n'));
+}
+if (pw) load();
+</script>
+</body>
+</html>
