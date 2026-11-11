@@ -32,21 +32,51 @@
 
     .container {
       width: 100%;
-      max-width: 500px;
+      max-width: 480px;
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
     }
 
-    h1 { font-size: 1.75rem; margin-bottom: 6px; font-weight: 700; word-break: break-all; }
+    h1 { font-size: 1.8rem; margin-bottom: 6px; font-weight: 700; }
     .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 24px; }
+
+    .login-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 100%;
+      margin-bottom: 20px;
+    }
+
+    .login-card label { display: block; text-align: left; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+    .login-card input[type="email"] {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      margin-bottom: 16px;
+    }
+    .login-card input[type="email"]:focus { border-color: var(--primary); }
+
+    .wheel-section {
+      display: none;
+      width: 100%;
+      flex-direction: column;
+      align-items: center;
+    }
 
     .wheel-wrapper {
       position: relative;
-      width: 340px;
-      height: 340px;
-      margin-bottom: 28px;
+      width: 320px;
+      height: 320px;
+      margin-bottom: 24px;
     }
 
     .pointer {
@@ -54,11 +84,10 @@
       top: -14px;
       left: 50%;
       transform: translateX(-50%);
-      width: 0;
-      height: 0;
+      width: 0; height: 0;
       border-left: 14px solid transparent;
       border-right: 14px solid transparent;
-      border-top: 24px solid #ef4444;
+      border-top: 24px solid var(--danger);
       z-index: 10;
       filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
     }
@@ -70,25 +99,26 @@
       box-shadow: 0 0 25px rgba(99, 102, 241, 0.25), 0 0 0 8px var(--panel-border);
     }
 
-    button.spin-btn {
+    button.btn-main {
       background: var(--primary);
       color: white;
       border: none;
       padding: 14px 36px;
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       font-weight: 700;
       border-radius: 9999px;
       cursor: pointer;
       box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
       transition: all 0.2s ease;
+      width: 100%;
     }
 
-    button.spin-btn:hover:not(:disabled) {
+    button.btn-main:hover:not(:disabled) {
       background: var(--primary-hover);
       transform: translateY(-2px);
     }
 
-    button.spin-btn:disabled {
+    button.btn-main:disabled {
       background: #475569;
       cursor: not-allowed;
       box-shadow: none;
@@ -96,7 +126,7 @@
     }
 
     .result-card {
-      margin-top: 24px;
+      margin-top: 20px;
       background: var(--panel);
       border: 1px solid var(--accent);
       border-radius: var(--radius);
@@ -112,45 +142,55 @@
       background: rgba(245, 158, 11, 0.1);
       border: 1px solid var(--panel-border);
       color: #fcd34d;
-      padding: 16px 20px;
+      padding: 14px 18px;
       border-radius: var(--radius);
       margin-top: 16px;
       display: none;
       width: 100%;
+      font-size: 0.9rem;
     }
 
     .error-card {
       background: rgba(239, 68, 68, 0.1);
       border: 1px solid var(--danger);
       color: #fca5a5;
-      padding: 16px 20px;
+      padding: 14px 18px;
       border-radius: var(--radius);
       margin-top: 16px;
       display: none;
       width: 100%;
+      font-size: 0.9rem;
     }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1 id="welcomeTitle">Secret Santa Spin</h1>
-    <p class="subtitle" id="subtitleText">Spin the wheel to reveal your recipient!</p>
+    <h1>Secret Spin</h1>
+    <p class="subtitle">Enter your email to join the Secret Santa spin!</p>
 
-    <div class="wheel-wrapper" id="wheelWrapper">
-      <div class="pointer"></div>
-      <canvas id="wheelCanvas" width="600" height="600"></canvas>
+    <!-- Email Input Card -->
+    <div class="login-card" id="loginCard">
+      <label for="userEmail">Participant Email Address</label>
+      <input type="email" id="userEmail" placeholder="your.name@domain.com" autocomplete="email">
+      <button class="btn-main" onclick="verifyEmail()">Continue to Spin</button>
     </div>
 
-    <button id="spinBtn" class="spin-btn" onclick="spinWheel()">SPIN THE WHEEL</button>
+    <!-- Spin Wheel Section (Unlocked after email verification) -->
+    <div class="wheel-section" id="wheelSection">
+      <div class="wheel-wrapper">
+        <div class="pointer"></div>
+        <canvas id="wheelCanvas" width="600" height="600"></canvas>
+      </div>
 
-    <div id="noticeCard" class="notice-card">🔒 Spinning has not been approved by the admin host yet. Please wait for the host to start the event.</div>
+      <button id="spinBtn" class="btn-main" onclick="spinWheel()">SPIN THE WHEEL</button>
+    </div>
 
+    <div id="noticeCard" class="notice-card">🔒 Spinning is locked by the admin host. Please wait for the event to open.</div>
     <div id="resultCard" class="result-card">
       <h3>You are Secret Santa for:</h3>
       <div id="recipientName" class="recipient-name">---</div>
     </div>
-
     <div id="errorCard" class="error-card"></div>
   </div>
 
@@ -161,10 +201,7 @@
       '#0284c7', '#16a34a', '#ea580c', '#9333ea'
     ];
 
-    // Extract token from URL path (/spin/YOUR_TOKEN)
-    const token = window.location.pathname.split('/').pop();
-
-    let meData = null;
+    let verifiedEmail = '';
     let wheelNames = [];
     let currentAngle = 0;
     let isSpinning = false;
@@ -172,30 +209,40 @@
     const canvas = document.getElementById('wheelCanvas');
     const ctx = canvas.getContext('2d');
 
-    async function init() {
-      if (!token) return showError('Invalid link token.');
+    async function verifyEmail() {
+      const emailInput = document.getElementById('userEmail').value.trim();
+      hideError();
+
+      if (!emailInput) return showError('Please enter your email address.');
 
       try {
-        const res = await fetch(`/api/me/${token}`);
-        if (!res.ok) throw new Error('Invalid or expired participant link.');
+        const res = await fetch('/api/check-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailInput })
+        });
 
-        meData = await res.json();
-        wheelNames = meData.wheelNames || [];
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Email verification failed.');
 
-        document.getElementById('welcomeTitle').innerText = `Welcome, ${meData.email}`;
+        verifiedEmail = data.email;
+        wheelNames = data.wheelNames || [];
+
+        document.getElementById('loginCard').style.display = 'none';
+        document.getElementById('wheelSection').style.display = 'flex';
 
         drawWheel(currentAngle);
 
-        if (!meData.isApproved && !meData.result) {
+        if (!data.isApproved && !data.alreadySpun) {
           document.getElementById('spinBtn').disabled = true;
           document.getElementById('noticeCard').style.display = 'block';
         }
 
-        if (meData.result) {
-          showResult(meData.result);
+        if (data.alreadySpun) {
+          showResult(data.result);
           document.getElementById('spinBtn').innerText = 'ALREADY SPUN';
           document.getElementById('spinBtn').disabled = true;
-          alignWheelToResult(meData.result);
+          alignWheelToResult(data.result);
         }
       } catch (err) {
         showError(err.message);
@@ -233,7 +280,6 @@
         ctx.textAlign = 'right';
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 16px system-ui, sans-serif';
-        // Truncate email prefix if long
         const label = wheelNames[i].split('@')[0];
         ctx.fillText(label, radius - 20, 6);
         ctx.restore();
@@ -249,7 +295,7 @@
     }
 
     async function spinWheel() {
-      if (isSpinning || (meData && meData.result)) return;
+      if (isSpinning || !verifiedEmail) return;
 
       const spinBtn = document.getElementById('spinBtn');
       spinBtn.disabled = true;
@@ -257,7 +303,11 @@
       isSpinning = true;
 
       try {
-        const res = await fetch(`/api/spin/${token}`, { method: 'POST' });
+        const res = await fetch('/api/spin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: verifiedEmail })
+        });
         const data = await res.json();
 
         if (!res.ok) throw new Error(data.error || 'Failed to spin');
@@ -331,11 +381,11 @@
       const errCard = document.getElementById('errorCard');
       errCard.innerText = msg;
       errCard.style.display = 'block';
-      document.getElementById('wheelWrapper').style.display = 'none';
-      document.getElementById('spinBtn').style.display = 'none';
     }
 
-    init();
+    function hideError() {
+      document.getElementById('errorCard').style.display = 'none';
+    }
   </script>
 </body>
 </html>
