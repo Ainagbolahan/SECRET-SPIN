@@ -64,8 +64,6 @@
     .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
     .badge-pending { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 
-    .link-box { display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 0.8rem; color: #a5b4fc; }
-
     #toast {
       position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius);
       background: var(--primary); color: white; font-weight: 500; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 100;
@@ -82,14 +80,14 @@
       </div>
     </header>
 
-    <!-- Add Participants by Email -->
+    <!-- Populate Allowed Participants Roster -->
     <div class="card">
-      <h2>Add Participants by Email</h2>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">Enter participant emails separated by commas, line breaks, or spaces (e.g. alice@domain.com, bob@domain.com)</p>
+      <h2>Add Allowed Participant Emails</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">Enter participant emails allowed to spin (separated by commas, spaces, or line breaks)</p>
       <div class="form-group">
         <textarea id="emailsInput" placeholder="alice@domain.com&#10;bob@domain.com&#10;charlie@domain.com"></textarea>
       </div>
-      <button onclick="addPeople()">Add Email Addresses</button>
+      <button onclick="addPeople()">Add Email Roster</button>
     </div>
 
     <!-- Actions & Controls -->
@@ -101,16 +99,16 @@
       <button onclick="resetAll()" class="btn-danger">⚠️ Reset All</button>
     </div>
 
-    <!-- People List -->
+    <!-- Participants Roster & Results Table -->
     <div class="card">
-      <h2>Participants (<span id="peopleCount">0</span>)</h2>
+      <h2>Participants & Secret Matches (<span id="peopleCount">0</span>)</h2>
       <table>
         <thead>
           <tr>
             <th>Participant Email</th>
-            <th>Unique Access Link (Send to Email)</th>
-            <th>Status</th>
-            <th>Assigned Recipient</th>
+            <th>Spin Status</th>
+            <th>Assigned Recipient Match</th>
+            <th>Spun At</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -180,33 +178,23 @@
         return;
       }
 
-      const origin = window.location.origin;
-
       tbody.innerHTML = people.map(p => {
-        const email = p.email || p.name || 'Unknown';
-        const token = p.token || p.slug || p.id || '';
-        const link = `${origin}/spin/${token}`;
         const isSpun = !!p.result;
-        const displayToken = token.length > 8 ? `${token.substring(0, 8)}...` : token;
+        const spunAtFormatted = p.spunAt ? new Date(p.spunAt).toLocaleString() : '-';
 
         return `
           <tr>
-            <td><strong>${escapeHtml(email)}</strong></td>
-            <td>
-              <div class="link-box">
-                <span>/spin/${displayToken}</span>
-                <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="copyToClipboard('${link}')">Copy Link</button>
-              </div>
-            </td>
+            <td><strong>${escapeHtml(p.email)}</strong></td>
             <td>
               <span class="badge ${isSpun ? 'badge-success' : 'badge-pending'}">
                 ${isSpun ? 'Spun' : 'Pending'}
               </span>
             </td>
-            <td>${p.result ? escapeHtml(p.result) : '<span style="color:var(--text-muted)">Hidden</span>'}</td>
+            <td>${p.result ? escapeHtml(p.result) : '<span style="color:var(--text-muted)">Unspun</span>'}</td>
+            <td>${spunAtFormatted}</td>
             <td>
-              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetPerson('${token}')">Reset</button>
-              <button class="btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="deletePerson('${token}')">Delete</button>
+              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetPerson('${p.email}')">Reset</button>
+              <button class="btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="deletePerson('${p.email}')">Delete</button>
             </td>
           </tr>
         `;
@@ -230,7 +218,7 @@
         document.getElementById('emailsInput').value = '';
         renderTable(data);
 
-        let msg = `Added ${data.addedCount} new email(s).`;
+        let msg = `Added ${data.addedCount} email(s) to roster.`;
         if (data.skippedCount > 0) msg += ` (${data.skippedCount} duplicate skipped)`;
         showToast(msg);
       } catch (err) {
@@ -253,7 +241,7 @@
     }
 
     async function lockAssignments() {
-      if (!confirm('This will pre-generate pairings for all participants. Continue?')) return;
+      if (!confirm('This will pre-generate Secret Santa pairings for all rostered emails. Continue?')) return;
       try {
         const res = await fetch('/api/admin/lock-assignments', {
           method: 'POST',
@@ -272,20 +260,15 @@
         return showToast('No participant data to export', true);
       }
 
-      const origin = window.location.origin;
-      const headers = ['Participant Email', 'Unique Access Link', 'Status', 'Assigned Recipient', 'Spun At'];
+      const headers = ['Participant Email', 'Status', 'Assigned Recipient Match', 'Spun At'];
       
       const rows = currentPeopleData.map(p => {
-        const token = p.token || p.slug || p.id || '';
-        const email = p.email || p.name || '';
-        const link = `${origin}/spin/${token}`;
         const status = p.result ? 'Spun' : 'Pending';
-        const recipient = p.result || '';
+        const recipient = p.result || 'Unspun';
         const spunAt = p.spunAt ? new Date(p.spunAt).toLocaleString() : '';
         
         return [
-          `"${email.replace(/"/g, '""')}"`,
-          `"${link.replace(/"/g, '""')}"`,
+          `"${p.email.replace(/"/g, '""')}"`,
           `"${status}"`,
           `"${recipient.replace(/"/g, '""')}"`,
           `"${spunAt}"`
@@ -298,46 +281,46 @@
       
       const a = document.createElement('a');
       a.href = url;
-      a.download = `secret_spin_participants_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `secret_spin_results_${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      showToast('Exported participant data to Excel!');
+      showToast('Exported matches to Excel!');
     }
 
-    async function resetPerson(token) {
+    async function resetPerson(email) {
       try {
-        const res = await fetch(`/api/admin/reset/${token}`, {
+        const res = await fetch(`/api/admin/reset/${encodeURIComponent(email)}`, {
           method: 'POST',
           headers: getHeaders()
         });
         const data = await res.json();
         renderTable(data);
-        showToast('Participant status reset');
+        showToast(`Reset spin state for ${email}`);
       } catch (err) {
         showToast('Failed to reset participant', true);
       }
     }
 
-    async function deletePerson(token) {
-      if (!confirm('Are you sure you want to delete this participant?')) return;
+    async function deletePerson(email) {
+      if (!confirm(`Are you sure you want to delete ${email} from the roster?`)) return;
       try {
-        const res = await fetch(`/api/admin/people/${token}`, {
+        const res = await fetch(`/api/admin/people/${encodeURIComponent(email)}`, {
           method: 'DELETE',
           headers: getHeaders()
         });
         const data = await res.json();
         renderTable(data);
-        showToast('Participant deleted');
+        showToast(`Deleted ${email}`);
       } catch (err) {
         showToast('Failed to delete participant', true);
       }
     }
 
     async function resetAll() {
-      if (!confirm('WARNING: Resetting will clear all spin results and pairings. Continue?')) return;
+      if (!confirm('WARNING: Resetting will clear all spin results and pairings for EVERYONE. Continue?')) return;
       try {
         const res = await fetch('/api/admin/reset-all', {
           method: 'POST',
@@ -349,11 +332,6 @@
       } catch (err) {
         showToast('Failed to reset all', true);
       }
-    }
-
-    function copyToClipboard(text) {
-      navigator.clipboard.writeText(text);
-      showToast('Copied email link to clipboard!');
     }
 
     function escapeHtml(str) {
