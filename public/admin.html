@@ -1,95 +1,292 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Admin</title>
-<style>
-  body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:#f6f5f1;color:#222}
-  h1{font-size:1.3rem}
-  textarea,input{width:100%;box-sizing:border-box;padding:8px;font-size:1rem;margin:6px 0}
-  button{padding:8px 14px;border:0;border-radius:8px;background:#1f6feb;color:#fff;cursor:pointer;margin:2px}
-  button.red{background:#c0392b} button.grey{background:#666}
-  .wrap{overflow-x:auto}
-  table{border-collapse:collapse;width:100%;background:#fff}
-  th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;font-size:.9rem;white-space:nowrap}
-  .box{background:#fff;padding:12px;border-radius:10px;margin-bottom:14px}
-  #err{color:#c0392b}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Secret Spin</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; line-height: 1.5; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--panel-border); }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    
+    .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+    .card h2 { font-size: 1.1rem; margin-bottom: 12px; color: var(--text); }
+    
+    .form-group { display: flex; gap: 10px; margin-bottom: 12px; }
+    input[type="password"], input[type="text"], textarea {
+      flex: 1; background: #0f172a; border: 1px solid var(--panel-border); color: var(--text);
+      padding: 10px 14px; border-radius: var(--radius); font-size: 0.95rem; outline: none;
+    }
+    textarea { resize: vertical; min-height: 80px; }
+    input:focus, textarea:focus { border-color: var(--primary); }
+    
+    button {
+      background: var(--primary); color: white; border: none; padding: 10px 16px;
+      border-radius: var(--radius); cursor: pointer; font-weight: 600; font-size: 0.9rem;
+      transition: background 0.2s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    button:hover { background: var(--primary-hover); }
+    button.btn-danger { background: var(--danger); }
+    button.btn-danger:hover { background: var(--danger-hover); }
+    button.btn-secondary { background: #475569; }
+    button.btn-secondary:hover { background: #334155; }
+    button.btn-warning { background: var(--warning); color: #0f172a; }
+
+    .actions-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+    th, td { padding: 12px; border-bottom: 1px solid var(--panel-border); }
+    th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
+    tr:hover { background: rgba(255,255,255,0.02); }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;
+    }
+    .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-pending { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+    .link-box { display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 0.85rem; color: #a5b4fc; }
+
+    #toast {
+      position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius);
+      background: var(--primary); color: white; font-weight: 500; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+  </style>
 </head>
 <body>
-<h1>Secret Spin: Admin</h1>
-<div class="box" id="login">
-  <input id="pw" type="password" placeholder="Admin password">
-  <button onclick="login()">Log in</button>
-  <div id="err"></div>
-</div>
-<div id="panel" style="display:none">
-  <div class="box">
-    <b>Add participants</b> (one name per line)
-    <textarea id="names" rows="5"></textarea>
-    <button onclick="addNames()">Add</button>
-    <button class="grey" onclick="copyAll()">Copy all links</button>
-    <button class="grey" onclick="load()">Refresh</button>
-  </div>
-  <div class="box wrap">
-    <div id="count"></div>
-    <table>
-      <thead><tr><th>Name</th><th>Private link</th><th>Picked</th><th>Spun at</th><th></th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </div>
-</div>
-<script>
-let pw = sessionStorage.getItem('pw') || '';
-let people = [];
-const H = () => ({ 'Content-Type': 'application/json', 'x-admin-password': pw });
-const link = p => location.origin + '/s/' + p.id;
+  <div class="container">
+    <header>
+      <h1>Secret Spin Admin</h1>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <label for="adminPass" style="font-size: 0.85rem; color: var(--text-muted);">Admin Password:</label>
+        <input type="password" id="adminPass" placeholder="Enter Admin Password" style="width: 200px;" onchange="savePassword()">
+      </div>
+    </header>
 
-async function login() {
-  pw = document.getElementById('pw').value;
-  const ok = await load();
-  if (ok) sessionStorage.setItem('pw', pw);
-}
-async function load() {
-  const r = await fetch('/api/admin/people', { headers: H() });
-  if (!r.ok) { document.getElementById('err').textContent = 'Wrong password'; return false; }
-  people = await r.json();
-  document.getElementById('login').style.display = 'none';
-  document.getElementById('panel').style.display = 'block';
-  render(); return true;
-}
-function render() {
-  const rows = document.getElementById('rows');
-  rows.innerHTML = '';
-  const done = people.filter(p => p.result).length;
-  document.getElementById('count').textContent = done + ' of ' + people.length + ' have spun';
-  for (const p of people) {
-    const tr = document.createElement('tr');
-    const cells = [p.name, link(p), p.result || '—', p.spunAt ? new Date(p.spunAt).toLocaleString() : '—'];
-    for (const t of cells) { const td = document.createElement('td'); td.textContent = t; tr.appendChild(td); }
-    const td = document.createElement('td');
-    td.appendChild(mkBtn('Copy link', '', () => navigator.clipboard.writeText(link(p))));
-    td.appendChild(mkBtn('Reset', 'grey', () => act('POST', '/api/admin/reset/' + p.id, 'Reset ' + p.name + '\'s spin?')));
-    td.appendChild(mkBtn('Remove', 'red', () => act('DELETE', '/api/admin/people/' + p.id, 'Remove ' + p.name + '?')));
-    tr.appendChild(td); rows.appendChild(tr);
-  }
-}
-function mkBtn(label, cls, fn) { const b = document.createElement('button'); b.textContent = label; b.className = cls; b.onclick = fn; return b; }
-async function act(method, url, q) {
-  if (!confirm(q)) return;
-  const r = await fetch(url, { method, headers: H() });
-  people = await r.json(); render();
-}
-async function addNames() {
-  const names = document.getElementById('names').value.split('\n');
-  const r = await fetch('/api/admin/people', { method: 'POST', headers: H(), body: JSON.stringify({ names }) });
-  people = await r.json(); document.getElementById('names').value = ''; render();
-}
-function copyAll() {
-  navigator.clipboard.writeText(people.map(p => p.name + ': ' + link(p)).join('\n'));
-}
-if (pw) load();
-</script>
+    <!-- Add Participants -->
+    <div class="card">
+      <h2>Add Participants</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">Enter names separated by commas or line breaks (e.g. John, Mary, Alex)</p>
+      <div class="form-group">
+        <textarea id="namesInput" placeholder="John Doe&#10;Mary Jane&#10;Alex Smith"></textarea>
+      </div>
+      <button onclick="addPeople()">Add Participants</button>
+    </div>
+
+    <!-- Actions & Controls -->
+    <div class="actions-bar">
+      <button onclick="lockAssignments()" class="btn-warning">🔒 Lock Secret Santa Pairings</button>
+      <button onclick="fetchPeople()" class="btn-secondary">🔄 Refresh List</button>
+      <button onclick="resetAll()" class="btn-danger">⚠️ Reset All Spins & Pairings</button>
+    </div>
+
+    <!-- People List -->
+    <div class="card">
+      <h2>Participants (<span id="peopleCount">0</span>)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Personal URL Link</th>
+            <th>Status</th>
+            <th>Result</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="peopleTable">
+          <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No participants added yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    // Save/Load Admin Password from LocalStorage
+    document.getElementById('adminPass').value = localStorage.getItem('admin_password') || '';
+
+    function savePassword() {
+      localStorage.setItem('admin_password', document.getElementById('adminPass').value);
+      fetchPeople();
+    }
+
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'x-admin-password': document.getElementById('adminPass').value
+      };
+    }
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.style.background = isError ? 'var(--danger)' : 'var(--primary)';
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 3000);
+    }
+
+    async function fetchPeople() {
+      try {
+        const res = await fetch('/api/admin/people', { headers: getHeaders() });
+        if (res.status === 401) return showToast('Incorrect Admin Password', true);
+        const data = await res.json();
+        renderTable(data);
+      } catch (err) {
+        showToast('Failed to fetch participants', true);
+      }
+    }
+
+    function renderTable(people) {
+      document.getElementById('peopleCount').innerText = people.length;
+      const tbody = document.getElementById('peopleTable');
+      if (people.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No participants added yet.</td></tr>';
+        return;
+      }
+
+      const origin = window.location.origin;
+
+      tbody.innerHTML = people.map(p => {
+        const slug = p.slug || p.id;
+        const link = `${origin}/${slug}`;
+        const isSpun = !!p.result;
+        return `
+          <tr>
+            <td><strong>${escapeHtml(p.name)}</strong></td>
+            <td>
+              <div class="link-box">
+                <span>/${slug}</span>
+                <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="copyToClipboard('${link}')">Copy Link</button>
+              </div>
+            </td>
+            <td>
+              <span class="badge ${isSpun ? 'badge-success' : 'badge-pending'}">
+                ${isSpun ? 'Spun' : 'Pending'}
+              </span>
+            </td>
+            <td>${p.result ? escapeHtml(p.result) : '<span style="color:var(--text-muted)">Hidden</span>'}</td>
+            <td>
+              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetPerson('${slug}')">Reset</button>
+              <button class="btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="deletePerson('${slug}')">Delete</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function addPeople() {
+      const input = document.getElementById('namesInput').value;
+      const names = input.split(/[\n,]/).map(n => n.trim()).filter(Boolean);
+      if (names.length === 0) return showToast('Please enter at least one name', true);
+
+      try {
+        const res = await fetch('/api/admin/people', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ names })
+        });
+        if (!res.ok) throw new Error();
+        document.getElementById('namesInput').value = '';
+        const data = await res.json();
+        renderTable(data);
+        showToast(`Added ${names.length} participant(s)`);
+      } catch (err) {
+        showToast('Failed to add participants', true);
+      }
+    }
+
+    async function lockAssignments() {
+      if (!confirm('This will pre-generate Secret Santa pairings for all participants. Continue?')) return;
+      try {
+        const res = await fetch('/api/admin/lock-assignments', {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to lock pairings');
+        showToast(data.message || 'Pairings locked successfully!');
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function resetPerson(slug) {
+      try {
+        const res = await fetch(`/api/admin/reset/${slug}`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        renderTable(data);
+        showToast(`Reset spin status for ${slug}`);
+      } catch (err) {
+        showToast('Failed to reset participant', true);
+      }
+    }
+
+    async function deletePerson(slug) {
+      if (!confirm(`Are you sure you want to delete ${slug}?`)) return;
+      try {
+        const res = await fetch(`/api/admin/people/${slug}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        renderTable(data);
+        showToast(`Deleted ${slug}`);
+      } catch (err) {
+        showToast('Failed to delete participant', true);
+      }
+    }
+
+    async function resetAll() {
+      if (!confirm('WARNING: This will clear all spin results and pairings for EVERYONE. Continue?')) return;
+      try {
+        const res = await fetch('/api/admin/reset-all', {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        renderTable(data);
+        showToast('All spins and pairings reset');
+      } catch (err) {
+        showToast('Failed to reset all', true);
+      }
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text);
+      showToast('Copied link to clipboard!');
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // Initial load
+    fetchPeople();
+  </script>
 </body>
 </html>
