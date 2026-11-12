@@ -8,25 +8,139 @@ app.use(express.json({ limit: '50kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-me';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+const GITHUB_REPO = process.env.GITHUB_REPO || ''; // Format: "username/repo-name"
+const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
+const GITHUB_FILE_PATH = 'data.json';
+
 const DATA_FILE = path.join(__dirname, 'data.json');
 const TEMP_FILE = path.join(__dirname, 'data.json.tmp');
 
-let state = null;
+let state = { people: [], isApproved: false };
+let githubFileSha = null;
+let isSyncing = false;
+let syncPending = false;
+
+function githubHeaders() {
+  return {
+    'Authorization': `Bearer ${GITHUB_TOKEN}`,
+    'Accept': 'application/vnd.github+json',
+    'User-Agent': 'secret-spin-app',
+    'Content-Type': 'application/json'
+  };
+}
+
+// Pull latest data.json from GitHub on server startup
+async function loadFromGitHub() {
+  if (!GITHUB_TOKEN || !GITHUB_REPO) {
+    console.log('GitHub sync disabled (GITHUB_TOKEN or GITHUB_REPO not set). Using local file.');
+    if (fs.existsSync(DATA_FILE)) {
+      try {
+        state = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      } catch (e) {
+        state = { people: [], isApproved: false };
+      }
+    }
+    return;
+  }
+
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${GITHUB_BRANCH}`;
+    const res = await fetch(url, { headers: githubHeaders() });
+
+    if (res.status === 404) {
+      console.log('data.json not found on GitHub yet. Will create on first save.');
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error(`GitHub GET failed: ${res.status} ${await res.text()}`);
+    }
+
+    const fileData = await res.json();
+    githubFileSha = fileData.sha;
+    const decoded = Buffer.from(fileData.content, 'base64').toString('utf8');
+    const parsed = JSON.parse(decoded);
+
+    state = {
+      people: Array.isArray(parsed.people) ? parsed.people : [],
+      isApproved: Boolean(parsed.isApproved)
+    };
+
+    fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf8');
+    console.log(`Loaded ${state.people.length} participants from GitHub.`);
+  } catch (err) {
+    console.error('Error loading state from GitHub:', err.message);
+  }
+}
+
+// Push data.json to GitHub sequentially to avoid SHA race conditions
+async function pushToGitHub() {
+  if (!GITHUB_TOKEN || !GITHUB_REPO) return;
+  if (isSyncing) {
+    syncPending = true;
+    return;
+  }
+
+  isSyncing = true;
+  syncPending = false;
+
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}`;
+    const contentBase64 = Buffer.from(JSON.stringify(state, null, 2), 'utf8').toString('base64');
+
+    // Fetch current SHA if we don't have it cached yet
+    if (!githubFileSha) {
+      const checkRes = await fetch(`${url}?ref=${GITHUB_BRANCH}`, { headers: githubHeaders() });
+      if (checkRes.ok) {
+        const checkData = await checkRes.json();
+        githubFileSha = checkData.sha;
+      }
+    }
+
+    const body = {
+      message: `Auto-save spin data (${new Date().toISOString()}) [skip render]`,
+      content: contentBase64,
+      branch: GITHUB_BRANCH
+    };
+    if (githubFileSha) body.sha = githubFileSha;
+
+    let putRes = await fetch(url, {
+      method: 'PUT',
+      headers: githubHeaders(),
+      body: JSON.stringify(body)
+    });
+
+    // Retry once if SHA became stale due to external edit
+    if (putRes.status === 409) {
+      const refreshRes = await fetch(`${url}?ref=${GITHUB_BRANCH}`, { headers: githubHeaders() });
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        body.sha = refreshData.sha;
+        putRes = await fetch(url, {
+          method: 'PUT',
+          headers: githubHeaders(),
+          body: JSON.stringify(body)
+        });
+      }
+    }
+
+    if (!putRes.ok) {
+      throw new Error(`GitHub PUT failed: ${putRes.status} ${await putRes.text()}`);
+    }
+
+    const resultData = await putRes.json();
+    githubFileSha = resultData.content.sha;
+    console.log('Saved data.json to GitHub.');
+  } catch (err) {
+    console.error('GitHub sync error:', err.message);
+  } finally {
+    isSyncing = false;
+    if (syncPending) pushToGitHub();
+  }
+}
 
 function load() {
-  if (state) return state;
-  if (!fs.existsSync(DATA_FILE)) {
-    state = { people: [], isApproved: false };
-    return state;
-  }
-  try {
-    state = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    if (!Array.isArray(state.people)) state.people = [];
-    if (typeof state.isApproved !== 'boolean') state.isApproved = false;
-  } catch (err) {
-    console.error('Failed to parse data.json, starting clean:', err);
-    state = { people: [], isApproved: false };
-  }
   return state;
 }
 
@@ -34,6 +148,7 @@ function save() {
   const dataString = JSON.stringify(state, null, 2);
   fs.writeFileSync(TEMP_FILE, dataString, 'utf8');
   fs.renameSync(TEMP_FILE, DATA_FILE);
+  pushToGitHub(); // Triggers async commit to GitHub
 }
 
 function parseAndValidateEmails(input) {
@@ -166,7 +281,6 @@ app.get('/api/admin/people', adminOnly, (req, res) => {
   res.json({ people: data.people, isApproved: data.isApproved });
 });
 
-// Restore state from Admin browser localStorage or JSON backup file
 app.post('/api/admin/restore', adminOnly, (req, res) => {
   const incomingPeople = Array.isArray(req.body.people) ? req.body.people : [];
   const data = load();
@@ -277,4 +391,8 @@ app.post('/api/admin/reset-all', adminOnly, (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Running on port ' + PORT));
+
+// Load data from GitHub before accepting traffic
+loadFromGitHub().then(() => {
+  app.listen(PORT, () => console.log('Running on port ' + PORT));
+});
