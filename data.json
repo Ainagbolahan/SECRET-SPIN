@@ -1,12 +1,6 @@
 {
   "people": [
     {
-      "email": "bob@domain.com",
-      "assignedResult": null,
-      "result": null,
-      "spunAt": null
-    },
-    {
       "email": "charlie@mail.com",
       "assignedResult": null,
       "result": null,
