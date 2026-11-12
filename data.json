@@ -1,4 +1,347 @@
 {
-  "people": [],
+  "people": [
+    {
+      "email": "kunle.adedeji@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "gbolahan.aina@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "abisola.ajibi@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "adeniyi.atekoja@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "taiwo.jayeola@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "zainab.ojuri@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "oluwakemi.sajobi@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "ifeoluwa.adeniyi@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "noimot.yinusa@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "ebenezer.bamigbowu@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "utibe.sunday@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "olamide.ilupeju@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "adeyemi.shofolabo@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "deborah.adeniyi@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "aderonke.adegbola@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "oluwafemi.oshodi@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "adedeji.adegboye@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "sunday.anwatim@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "oluwaseun.fabiyi@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "bolanle.oyedokun@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "mayowa.erinfolami@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "funmilola.esho@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "victor.iheukwumere@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "abdulahi.jimoh@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "charles.ileogben@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "dominic.iko-ojo@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "ekene.eze@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "oreoluwa.esan@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "ayodele.falade@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "kingsley.onwusiribe@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "olalekan.ajide@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "olaide.badmus-aribatise@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "osamudiame.ehis@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "chidubem.chukwuma@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "esther.okafor@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "itanola.akinniyi@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "michael.nmerole@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "olatokunbo.lawal@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "josephine.chibunna@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "seyi.taiwo@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "abayomi.makinde@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "judith.alozie@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "wunmi.ehis-uzenabor@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "oluwademilade.olunuga@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "john.adeotan@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "blessing.edokpolor@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "olafare.olubusayo@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "blessing.simeon@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "aramide.oluwole@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "faluse.wahab@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "temitope.roberts@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "bamgboye.habeeb@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "esther.gali@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "favour.omiwole@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "blessing.samuel@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "nekabari.bughar@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    },
+    {
+      "email": "daniel.eguda@stanbicibtc.com",
+      "assignedResult": null,
+      "result": null,
+      "spunAt": null
+    }
+  ],
   "isApproved": false
 }
