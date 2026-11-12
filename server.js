@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const path = require('path');
 
 const app = express();
-app.use(express.json({ limit: '10kb' }));
+app.use(express.json({ limit: '50kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-me';
@@ -99,7 +99,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'spin.html'));
 });
 
-// Verify email tied to admin roster (Does NOT return result to enforce one-time reveal)
 app.post('/api/check-email', (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!email) return res.status(400).json({ error: 'Please enter a valid email address.' });
@@ -115,13 +114,12 @@ app.post('/api/check-email', (req, res) => {
 
   res.json({
     email: person.email,
-    alreadySpun: !!person.result, // Boolean flag only (NO match string returned)
+    alreadySpun: !!person.result,
     isApproved: data.isApproved,
     wheelNames: data.people.map(p => p.email)
   });
 });
 
-// Trigger spin (Only time the recipient match is returned to the user)
 app.post('/api/spin', (req, res) => {
   const data = load();
   const email = String(req.body.email || '').trim().toLowerCase();
@@ -135,12 +133,10 @@ app.post('/api/spin', (req, res) => {
     return res.status(404).json({ error: 'Email not tied to admin roster.' });
   }
 
-  // Strictly block repeated spins
   if (person.result) {
     return res.status(400).json({ error: 'You have already completed your spin.' });
   }
 
-  // Pre-computed pairing logic
   if (person.assignedResult) {
     person.result = person.assignedResult;
     person.spunAt = new Date().toISOString();
@@ -148,7 +144,6 @@ app.post('/api/spin', (req, res) => {
     return res.json({ result: person.result });
   }
 
-  // Fallback random selection
   const taken = new Set(data.people.map(p => p.result).filter(Boolean));
   const available = data.people
     .map(p => p.email)
@@ -168,6 +163,28 @@ app.post('/api/spin', (req, res) => {
 // ---------- Admin Routes ----------
 app.get('/api/admin/people', adminOnly, (req, res) => {
   const data = load();
+  res.json({ people: data.people, isApproved: data.isApproved });
+});
+
+// Restore state from Admin browser localStorage or JSON backup file
+app.post('/api/admin/restore', adminOnly, (req, res) => {
+  const incomingPeople = Array.isArray(req.body.people) ? req.body.people : [];
+  const data = load();
+
+  data.people = incomingPeople
+    .filter(p => p && typeof p.email === 'string')
+    .map(p => ({
+      email: p.email.trim().toLowerCase(),
+      assignedResult: p.assignedResult || null,
+      result: p.result || null,
+      spunAt: p.spunAt || null
+    }));
+
+  if (typeof req.body.isApproved === 'boolean') {
+    data.isApproved = req.body.isApproved;
+  }
+
+  save();
   res.json({ people: data.people, isApproved: data.isApproved });
 });
 
@@ -220,7 +237,11 @@ app.post('/api/admin/lock-assignments', adminOnly, (req, res) => {
   });
 
   save();
-  res.json({ message: 'Pairings generated and locked successfully', count: data.people.length });
+  res.json({ 
+    message: 'Pairings generated and locked successfully', 
+    people: data.people, 
+    isApproved: data.isApproved 
+  });
 });
 
 app.delete('/api/admin/people/:email', adminOnly, (req, res) => {
