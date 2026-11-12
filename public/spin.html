@@ -182,14 +182,12 @@
     <h1>Secret Spin</h1>
     <p class="subtitle">Enter your email to join the Secret Santa spin!</p>
 
-    <!-- Email Input Card -->
     <div class="login-card" id="loginCard">
       <label for="userEmail">Participant Email Address</label>
       <input type="email" id="userEmail" placeholder="your.name@domain.com" autocomplete="email">
       <button class="btn-main" onclick="verifyEmail()">Continue to Spin</button>
     </div>
 
-    <!-- Spin Wheel Section -->
     <div class="wheel-section" id="wheelSection">
       <div class="wheel-wrapper">
         <div class="pointer"></div>
@@ -201,13 +199,11 @@
 
     <div id="noticeCard" class="notice-card">🔒 Spinning is locked by the admin host. Please wait for the event to open.</div>
     
-    <!-- Returning User Notice (One-time match privacy enforced) -->
     <div id="alreadySpunCard" class="already-spun-card">
       <strong style="color:var(--text); display:block; margin-bottom:6px;">⚠️ Spin Already Completed</strong>
       You have already spun the wheel! For security and privacy, match details are only displayed once at the moment of spinning.
     </div>
 
-    <!-- First-Time Spin Reveal Card -->
     <div id="resultCard" class="result-card">
       <h3>You are Secret Santa for:</h3>
       <div id="recipientName" class="recipient-name">---</div>
@@ -232,7 +228,7 @@
     const ctx = canvas.getContext('2d');
 
     async function verifyEmail() {
-      const emailInput = document.getElementById('userEmail').value.trim();
+      const emailInput = document.getElementById('userEmail').value.trim().toLowerCase();
       hideError();
 
       if (!emailInput) return showError('Please enter your email address.');
@@ -252,13 +248,13 @@
 
         document.getElementById('loginCard').style.display = 'none';
 
-        // Check if returning user who already completed their spin
-        if (data.alreadySpun) {
+        const localAlreadySpun = localStorage.getItem(`secret_spin_done_${verifiedEmail}`) === 'true';
+
+        if (data.alreadySpun || localAlreadySpun) {
           document.getElementById('alreadySpunCard').style.display = 'block';
           return;
         }
 
-        // Show wheel section for first-time spinners
         document.getElementById('wheelSection').style.display = 'flex';
         drawWheel(currentAngle);
 
@@ -333,6 +329,9 @@
         const data = await res.json();
 
         if (!res.ok) throw new Error(data.error || 'Failed to spin');
+
+        // Record completion in participant's browser localStorage
+        localStorage.setItem(`secret_spin_done_${verifiedEmail}`, 'true');
 
         const winnerEmail = data.result;
         animateSpinToWinner(winnerEmail, () => {
