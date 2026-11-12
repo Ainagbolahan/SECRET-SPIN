@@ -37,21 +37,30 @@
     }
     textarea { resize: vertical; min-height: 90px; }
     input:focus, textarea:focus { border-color: var(--primary); }
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+      cursor: pointer;
+      vertical-align: middle;
+    }
     
     button {
       background: var(--primary); color: white; border: none; padding: 10px 16px;
       border-radius: var(--radius); cursor: pointer; font-weight: 600; font-size: 0.9rem;
-      transition: background 0.2s; display: inline-flex; align-items: center; gap: 6px;
+      transition: background 0.2s, opacity 0.2s; display: inline-flex; align-items: center; gap: 6px;
     }
-    button:hover { background: var(--primary-hover); }
+    button:hover:not(:disabled) { background: var(--primary-hover); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
     button.btn-danger { background: var(--danger); }
-    button.btn-danger:hover { background: var(--danger-hover); }
+    button.btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
     button.btn-secondary { background: #475569; }
-    button.btn-secondary:hover { background: #334155; }
+    button.btn-secondary:hover:not(:disabled) { background: #334155; }
     button.btn-warning { background: var(--warning); color: #0f172a; }
     button.btn-success { background: var(--success); }
     button.btn-excel { background: #059669; }
-    button.btn-excel:hover { background: #047857; }
+    button.btn-excel:hover:not(:disabled) { background: #047857; }
 
     .actions-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
 
@@ -59,6 +68,7 @@
     th, td { padding: 12px; border-bottom: 1px solid var(--panel-border); }
     th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
     tr:hover { background: rgba(255,255,255,0.02); }
+    tr.selected-row { background: rgba(99, 102, 241, 0.12); }
 
     .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
     .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
@@ -103,7 +113,9 @@
       <button onclick="downloadJsonBackup()" class="btn-secondary">💾 Save Backup File</button>
       <button onclick="document.getElementById('backupFileInput').click()" class="btn-secondary">📂 Load Backup File</button>
       <input type="file" id="backupFileInput" accept=".json" style="display:none" onchange="uploadJsonBackup(event)">
-      <button onclick="resetAll()" class="btn-danger">⚠️ Reset All</button>
+      <button onclick="resetAll()" class="btn-secondary">🔄 Reset All Spins</button>
+      <button id="bulkDeleteBtn" onclick="bulkDelete()" class="btn-danger" disabled>🗑️ Delete Selected (0)</button>
+      <button id="deleteAllBtn" onclick="deleteAll()" class="btn-danger" disabled>💥 Delete All</button>
     </div>
 
     <!-- Results Table -->
@@ -112,6 +124,9 @@
       <table>
         <thead>
           <tr>
+            <th style="width: 40px;">
+              <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" title="Select all participants">
+            </th>
             <th>Participant Email</th>
             <th>Spin Status</th>
             <th>Assigned Recipient Match</th>
@@ -120,7 +135,7 @@
           </tr>
         </thead>
         <tbody id="peopleTable">
-          <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No participants added yet.</td></tr>
+          <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No participants added yet.</td></tr>
         </tbody>
       </table>
     </div>
@@ -133,6 +148,7 @@
     let currentPeopleData = [];
     let currentApprovalState = false;
     let previousStateMap = new Map();
+    let selectedEmails = new Set();
     let isInitialLoad = true;
 
     document.getElementById('adminPass').value = localStorage.getItem('admin_password') || '';
@@ -157,7 +173,6 @@
       setTimeout(() => { toast.style.display = 'none'; }, 4000);
     }
 
-    // Save mirror of server state into Admin browser localStorage
     function saveLocalBackup(people, isApproved) {
       if (!Array.isArray(people) || people.length === 0) return;
       const payload = {
@@ -211,7 +226,6 @@
         const data = await res.json();
         const serverPeople = data.people || [];
 
-        // If server woke up empty (Render sleep) but browser has saved records, auto-restore!
         if (serverPeople.length === 0) {
           const localBackup = getLocalBackup();
           if (localBackup && Array.isArray(localBackup.people) && localBackup.people.length > 0) {
@@ -248,12 +262,60 @@
       isInitialLoad = false;
     }
 
+    function updateSelectionUI() {
+      const total = currentPeopleData.length;
+      const count = selectedEmails.size;
+
+      const selectAllBox = document.getElementById('selectAllCheckbox');
+      if (total === 0) {
+        selectAllBox.checked = false;
+        selectAllBox.indeterminate = false;
+        selectAllBox.disabled = true;
+      } else {
+        selectAllBox.disabled = false;
+        selectAllBox.checked = count === total;
+        selectAllBox.indeterminate = count > 0 && count < total;
+      }
+
+      const bulkBtn = document.getElementById('bulkDeleteBtn');
+      bulkBtn.innerText = `🗑️ Delete Selected (${count})`;
+      bulkBtn.disabled = count === 0;
+
+      const deleteAllBtn = document.getElementById('deleteAllBtn');
+      deleteAllBtn.disabled = total === 0;
+    }
+
+    function toggleSelectAll(checked) {
+      if (checked) {
+        currentPeopleData.forEach(p => selectedEmails.add(p.email.toLowerCase()));
+      } else {
+        selectedEmails.clear();
+      }
+      renderTable({ people: currentPeopleData, isApproved: currentApprovalState });
+    }
+
+    function toggleRowSelection(email, checked) {
+      const key = email.toLowerCase();
+      if (checked) {
+        selectedEmails.add(key);
+      } else {
+        selectedEmails.delete(key);
+      }
+      renderTable({ people: currentPeopleData, isApproved: currentApprovalState });
+    }
+
     function renderTable(data) {
       const people = data.people || [];
       const isApproved = data.isApproved || false;
       currentPeopleData = people;
       currentApprovalState = isApproved;
       document.getElementById('peopleCount').innerText = people.length;
+
+      // Prune any selected emails that no longer exist in the list
+      const validSet = new Set(people.map(p => p.email.toLowerCase()));
+      for (const email of selectedEmails) {
+        if (!validSet.has(email)) selectedEmails.delete(email);
+      }
       
       const approvalBtn = document.getElementById('approvalBtn');
       if (isApproved) {
@@ -266,16 +328,22 @@
 
       const tbody = document.getElementById('peopleTable');
       if (people.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No participants added yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No participants added yet.</td></tr>';
+        updateSelectionUI();
         return;
       }
 
       tbody.innerHTML = people.map(p => {
         const isSpun = !!p.result;
         const spunAtFormatted = p.spunAt ? new Date(p.spunAt).toLocaleString() : '-';
+        const isSelected = selectedEmails.has(p.email.toLowerCase());
+        const jsSafeEmail = escapeHtml(p.email).replace(/'/g, "\\'");
 
         return `
-          <tr>
+          <tr class="${isSelected ? 'selected-row' : ''}">
+            <td>
+              <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleRowSelection('${jsSafeEmail}', this.checked)">
+            </td>
             <td><strong>${escapeHtml(p.email)}</strong></td>
             <td>
               <span class="badge ${isSpun ? 'badge-success' : 'badge-pending'}">
@@ -285,12 +353,14 @@
             <td>${p.result ? escapeHtml(p.result) : '<span style="color:var(--text-muted)">Unspun</span>'}</td>
             <td>${spunAtFormatted}</td>
             <td>
-              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetPerson('${p.email}')">Reset</button>
-              <button class="btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="deletePerson('${p.email}')">Delete</button>
+              <button class="btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetPerson('${jsSafeEmail}')">Reset</button>
+              <button class="btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="deletePerson('${jsSafeEmail}')">Delete</button>
             </td>
           </tr>
         `;
       }).join('');
+
+      updateSelectionUI();
     }
 
     async function addPeople() {
@@ -448,6 +518,7 @@
           headers: getHeaders()
         });
         const data = await res.json();
+        selectedEmails.delete(email.toLowerCase());
         if (data.people.length === 0) {
           localStorage.removeItem(BACKUP_KEY);
           document.getElementById('syncStatus').innerText = '💾 Browser Backup: Cleared (0 records)';
@@ -461,8 +532,60 @@
       }
     }
 
+    async function bulkDelete() {
+      const count = selectedEmails.size;
+      if (count === 0) return;
+      if (!confirm(`Are you sure you want to permanently delete ${count} selected participant(s)?`)) return;
+
+      try {
+        const res = await fetch('/api/admin/bulk-delete', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ emails: Array.from(selectedEmails) })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Bulk delete failed');
+
+        selectedEmails.clear();
+        if (data.people.length === 0) {
+          localStorage.removeItem(BACKUP_KEY);
+          document.getElementById('syncStatus').innerText = '💾 Browser Backup: Cleared (0 records)';
+        } else {
+          saveLocalBackup(data.people, data.isApproved);
+        }
+
+        renderTable(data);
+        showToast(`Deleted ${data.deletedCount} participant(s)`);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function deleteAll() {
+      if (currentPeopleData.length === 0) return;
+      if (!confirm(`WARNING: This will permanently delete ALL ${currentPeopleData.length} participants, pairings, and spin results. This cannot be undone. Continue?`)) return;
+
+      try {
+        const res = await fetch('/api/admin/delete-all', {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to delete all participants');
+
+        selectedEmails.clear();
+        localStorage.removeItem(BACKUP_KEY);
+        document.getElementById('syncStatus').innerText = '💾 Browser Backup: Cleared (0 records)';
+
+        renderTable(data);
+        showToast('All participants deleted');
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
     async function resetAll() {
-      if (!confirm('WARNING: Resetting will clear all spin results, pairings, and browser backups. Continue?')) return;
+      if (!confirm('WARNING: Resetting will clear all spin results and pairings while keeping the email list. Continue?')) return;
       try {
         const res = await fetch('/api/admin/reset-all', {
           method: 'POST',
@@ -472,7 +595,7 @@
         localStorage.removeItem(BACKUP_KEY);
         saveLocalBackup(data.people, data.isApproved);
         renderTable(data);
-        showToast('All spins, pairings, and browser backups reset');
+        showToast('All spins and pairings reset');
       } catch (err) {
         showToast('Failed to reset all', true);
       }
