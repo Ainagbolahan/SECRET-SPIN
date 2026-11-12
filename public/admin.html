@@ -24,7 +24,7 @@
     body { background-color: var(--bg); color: var(--text); padding: 20px; line-height: 1.5; }
     .container { max-width: 1000px; margin: 0 auto; }
     
-    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--panel-border); }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
     h1 { font-size: 1.5rem; font-weight: 700; }
     
     .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
@@ -64,6 +64,8 @@
     .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
     .badge-pending { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 
+    .sync-status { font-size: 0.8rem; color: #34d399; margin-bottom: 14px; display: block; }
+
     #toast {
       position: fixed; bottom: 20px; right: 20px; padding: 14px 22px; border-radius: var(--radius);
       background: var(--primary); color: white; font-weight: 600; display: none; box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 100;
@@ -81,6 +83,8 @@
       </div>
     </header>
 
+    <span id="syncStatus" class="sync-status">💾 Browser Backup: Checking...</span>
+
     <!-- Roster Entry -->
     <div class="card">
       <h2>Add Allowed Participant Emails</h2>
@@ -96,7 +100,9 @@
       <button id="approvalBtn" onclick="toggleApproval()" class="btn-warning">🔒 Enable Participant Spinning</button>
       <button onclick="lockAssignments()" class="btn-secondary">🎲 Lock Pairings</button>
       <button onclick="exportToExcel()" class="btn-excel">📊 Export to Excel</button>
-      <button onclick="fetchPeople()" class="btn-secondary">🔄 Refresh</button>
+      <button onclick="downloadJsonBackup()" class="btn-secondary">💾 Save Backup File</button>
+      <button onclick="document.getElementById('backupFileInput').click()" class="btn-secondary">📂 Load Backup File</button>
+      <input type="file" id="backupFileInput" accept=".json" style="display:none" onchange="uploadJsonBackup(event)">
       <button onclick="resetAll()" class="btn-danger">⚠️ Reset All</button>
     </div>
 
@@ -123,7 +129,9 @@
   <div id="toast"></div>
 
   <script>
+    const BACKUP_KEY = 'secret_spin_state_backup';
     let currentPeopleData = [];
+    let currentApprovalState = false;
     let previousStateMap = new Map();
     let isInitialLoad = true;
 
@@ -149,20 +157,80 @@
       setTimeout(() => { toast.style.display = 'none'; }, 4000);
     }
 
-    async function fetchPeople() {
+    // Save mirror of server state into Admin browser localStorage
+    function saveLocalBackup(people, isApproved) {
+      if (!Array.isArray(people) || people.length === 0) return;
+      const payload = {
+        people,
+        isApproved: Boolean(isApproved),
+        savedAt: new Date().toISOString()
+      };
+      localStorage.setItem(BACKUP_KEY, JSON.stringify(payload));
+      document.getElementById('syncStatus').innerText = 
+        `💾 Browser Backup Active: ${people.length} records saved locally (${new Date().toLocaleTimeString()})`;
+    }
+
+    function getLocalBackup() {
       try {
-        const res = await fetch('/api/admin/people', { headers: getHeaders() });
-        if (res.status === 401) return showToast('Incorrect Admin Password', true);
-        const data = await res.json();
-        
-        checkForNewSpins(data.people || []);
-        renderTable(data);
-      } catch (err) {
-        // Silent fail on auto-polling errors
+        const raw = localStorage.getItem(BACKUP_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (e) {
+        return null;
       }
     }
 
-    // Compare state to detect live spin events and notify admin
+    async function restoreToServer(backupData, sourceLabel = 'browser backup') {
+      try {
+        const res = await fetch('/api/admin/restore', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            people: backupData.people,
+            isApproved: backupData.isApproved
+          })
+        });
+        if (!res.ok) return false;
+        const restored = await res.json();
+        saveLocalBackup(restored.people, restored.isApproved);
+        renderTable(restored);
+        showToast(`♻️ Restored ${restored.people.length} records from ${sourceLabel}!`);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    async function fetchPeople() {
+      try {
+        const res = await fetch('/api/admin/people', { headers: getHeaders() });
+        if (res.status === 401) {
+          document.getElementById('syncStatus').innerText = '🔒 Enter Admin Password to sync records';
+          return showToast('Incorrect Admin Password', true);
+        }
+        const data = await res.json();
+        const serverPeople = data.people || [];
+
+        // If server woke up empty (Render sleep) but browser has saved records, auto-restore!
+        if (serverPeople.length === 0) {
+          const localBackup = getLocalBackup();
+          if (localBackup && Array.isArray(localBackup.people) && localBackup.people.length > 0) {
+            await restoreToServer(localBackup, 'browser localStorage');
+            return;
+          } else {
+            document.getElementById('syncStatus').innerText = '💾 Browser Backup: Ready (0 records)';
+          }
+        } else {
+          saveLocalBackup(serverPeople, data.isApproved);
+        }
+
+        checkForNewSpins(serverPeople);
+        renderTable(data);
+      } catch (err) {
+        // Silent fail during background polling
+      }
+    }
+
     function checkForNewSpins(newPeopleList) {
       if (!isInitialLoad) {
         for (const person of newPeopleList) {
@@ -175,7 +243,6 @@
         }
       }
 
-      // Update state tracking map
       previousStateMap.clear();
       newPeopleList.forEach(p => previousStateMap.set(p.email.toLowerCase(), { ...p }));
       isInitialLoad = false;
@@ -185,6 +252,7 @@
       const people = data.people || [];
       const isApproved = data.isApproved || false;
       currentPeopleData = people;
+      currentApprovalState = isApproved;
       document.getElementById('peopleCount').innerText = people.length;
       
       const approvalBtn = document.getElementById('approvalBtn');
@@ -240,6 +308,7 @@
         if (!res.ok) throw new Error(data.error || 'Failed to add emails');
 
         document.getElementById('emailsInput').value = '';
+        saveLocalBackup(data.people, data.isApproved);
         renderTable(data);
 
         let msg = `Added ${data.addedCount} email(s) to roster.`;
@@ -257,6 +326,7 @@
           headers: getHeaders()
         });
         const data = await res.json();
+        saveLocalBackup(currentPeopleData, data.isApproved);
         showToast(data.message);
         fetchPeople();
       } catch (err) {
@@ -273,6 +343,7 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to lock pairings');
+        if (data.people) saveLocalBackup(data.people, data.isApproved);
         showToast(data.message);
       } catch (err) {
         showToast(err.message, true);
@@ -314,6 +385,46 @@
       showToast('Exported matches to Excel!');
     }
 
+    function downloadJsonBackup() {
+      if (!currentPeopleData || currentPeopleData.length === 0) {
+        return showToast('No records available to back up', true);
+      }
+      const backupObj = {
+        people: currentPeopleData,
+        isApproved: currentApprovalState,
+        exportedAt: new Date().toISOString()
+      };
+      const blob = new Blob([JSON.stringify(backupObj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `secret_spin_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Backup file downloaded!');
+    }
+
+    function uploadJsonBackup(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (!parsed || !Array.isArray(parsed.people)) {
+            throw new Error('Invalid backup file format');
+          }
+          await restoreToServer(parsed, 'uploaded file');
+        } catch (err) {
+          showToast('Failed to load backup file', true);
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+
     async function resetPerson(email) {
       try {
         const res = await fetch(`/api/admin/reset/${encodeURIComponent(email)}`, {
@@ -321,6 +432,7 @@
           headers: getHeaders()
         });
         const data = await res.json();
+        saveLocalBackup(data.people, data.isApproved);
         renderTable(data);
         showToast(`Reset spin state for ${email}`);
       } catch (err) {
@@ -336,6 +448,12 @@
           headers: getHeaders()
         });
         const data = await res.json();
+        if (data.people.length === 0) {
+          localStorage.removeItem(BACKUP_KEY);
+          document.getElementById('syncStatus').innerText = '💾 Browser Backup: Cleared (0 records)';
+        } else {
+          saveLocalBackup(data.people, data.isApproved);
+        }
         renderTable(data);
         showToast(`Deleted ${email}`);
       } catch (err) {
@@ -344,15 +462,17 @@
     }
 
     async function resetAll() {
-      if (!confirm('WARNING: Resetting will clear all spin results and pairings for EVERYONE. Continue?')) return;
+      if (!confirm('WARNING: Resetting will clear all spin results, pairings, and browser backups. Continue?')) return;
       try {
         const res = await fetch('/api/admin/reset-all', {
           method: 'POST',
           headers: getHeaders()
         });
         const data = await res.json();
+        localStorage.removeItem(BACKUP_KEY);
+        saveLocalBackup(data.people, data.isApproved);
         renderTable(data);
-        showToast('All spins and pairings reset');
+        showToast('All spins, pairings, and browser backups reset');
       } catch (err) {
         showToast('Failed to reset all', true);
       }
@@ -362,7 +482,6 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
-    // Initial load & automatic 3-second live updates
     fetchPeople();
     setInterval(fetchPeople, 3000);
   </script>
