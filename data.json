@@ -1,11 +1,4 @@
 {
-  "people": [
-    {
-      "email": "charlie@mail.com",
-      "assignedResult": null,
-      "result": null,
-      "spunAt": null
-    }
-  ],
+  "people": [],
   "isApproved": false
 }
