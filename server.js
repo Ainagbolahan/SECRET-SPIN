@@ -89,7 +89,6 @@ async function pushToGitHub() {
     const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}`;
     const contentBase64 = Buffer.from(JSON.stringify(state, null, 2), 'utf8').toString('base64');
 
-    // Fetch current SHA if we don't have it cached yet
     if (!githubFileSha) {
       const checkRes = await fetch(`${url}?ref=${GITHUB_BRANCH}`, { headers: githubHeaders() });
       if (checkRes.ok) {
@@ -111,7 +110,6 @@ async function pushToGitHub() {
       body: JSON.stringify(body)
     });
 
-    // Retry once if SHA became stale due to external edit
     if (putRes.status === 409) {
       const refreshRes = await fetch(`${url}?ref=${GITHUB_BRANCH}`, { headers: githubHeaders() });
       if (refreshRes.ok) {
@@ -148,7 +146,7 @@ function save() {
   const dataString = JSON.stringify(state, null, 2);
   fs.writeFileSync(TEMP_FILE, dataString, 'utf8');
   fs.renameSync(TEMP_FILE, DATA_FILE);
-  pushToGitHub(); // Triggers async commit to GitHub
+  pushToGitHub();
 }
 
 function parseAndValidateEmails(input) {
@@ -366,6 +364,35 @@ app.delete('/api/admin/people/:email', adminOnly, (req, res) => {
   res.json({ people: data.people, isApproved: data.isApproved });
 });
 
+// Bulk delete selected participants in one atomic save
+app.post('/api/admin/bulk-delete', adminOnly, (req, res) => {
+  const rawEmails = Array.isArray(req.body.emails) ? req.body.emails : [];
+  const toDelete = new Set(
+    rawEmails.map(e => String(e).trim().toLowerCase()).filter(Boolean)
+  );
+
+  if (toDelete.size === 0) {
+    return res.status(400).json({ error: 'No participants selected for deletion.' });
+  }
+
+  const data = load();
+  const beforeCount = data.people.length;
+  data.people = data.people.filter(p => !toDelete.has(p.email.toLowerCase()));
+  const deletedCount = beforeCount - data.people.length;
+
+  if (deletedCount > 0) save();
+  res.json({ people: data.people, isApproved: data.isApproved, deletedCount });
+});
+
+// Delete all participants and clear roster
+app.post('/api/admin/delete-all', adminOnly, (req, res) => {
+  const data = load();
+  data.people = [];
+  data.isApproved = false;
+  save();
+  res.json({ people: data.people, isApproved: data.isApproved });
+});
+
 app.post('/api/admin/reset/:email', adminOnly, (req, res) => {
   const data = load();
   const targetEmail = req.params.email.toLowerCase();
@@ -392,7 +419,6 @@ app.post('/api/admin/reset-all', adminOnly, (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// Load data from GitHub before accepting traffic
 loadFromGitHub().then(() => {
   app.listen(PORT, () => console.log('Running on port ' + PORT));
 });
